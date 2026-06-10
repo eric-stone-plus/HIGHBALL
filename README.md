@@ -71,7 +71,7 @@ BANNIN is the active enforcement layer within KENGEN. While KENGEN defines the b
 
 ## Prior Art
 
-KANSA and KENGEN originally existed as standalone repositories. HIGHBALL bundles them as a unified constraint collection. The original repos remain as read-only archives.
+KANSA and KENGEN originally existed as standalone repositories ([KANSA](https://github.com/eric-stone-plus/KANSA), [KENGEN](https://github.com/eric-stone-plus/KENGEN)). HIGHBALL bundles them as a unified constraint collection.
 
 ---
 
