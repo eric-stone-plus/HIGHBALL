@@ -122,7 +122,7 @@ git push → BANNIN greps session → keyword found → push proceeds
 
 ## Prior Art
 
-KANSA and KENGEN originally existed as standalone repositories ([KANSA](https://github.com/eric-stone-plus/KANSA), [KENGEN](https://github.com/eric-stone-plus/KENGEN)). HIGHBALL bundles their documentation as a unified constraint reference. KANSA remains a QUINTE component; KENGEN is the independent HIGHBALL contribution.
+KANSA and KENGEN were originally standalone repositories. As of 2026-06-11, they are merged into HIGHBALL as the unified constraint reference. The original repos are archived.
 
 ### Reference Implementation
 
