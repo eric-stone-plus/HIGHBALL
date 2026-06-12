@@ -7,8 +7,8 @@
 | Question | Component | Origin | Role |
 |----------|-----------|--------|------|
 | *Sound?* | **KANSA** | QUINTE Phase 6 / R3 | Independent second review of every verdict |
-| *May I?* | **KENGEN** (権限) | HIGHBALL execution layer | Authorization perimeter — gates irreversible writes |
-| | **BANNIN** (番人) | KENGEN session guard | Silent block — no clarify, no negotiate |
+| *May I?* | **KENGEN** | HIGHBALL execution layer | Authorization perimeter — gates irreversible writes |
+| | **BANNIN** | KENGEN session guard | Silent block — no clarify, no negotiate |
 | *Attentive? Effective?* | **KOZO**  | HIGHBALL measurement layer | Attention compliance + cross-detection sensitivity |
 
 ## Architecture
@@ -73,7 +73,7 @@ When KANSA annotates dissent on a conclusion, the user decides whether to procee
 
 ---
 
-## KENGEN (権限) — Authorization Perimeter
+## KENGEN — Authorization Perimeter
 
 > 権限 = authority, permission. *May I?*
 
@@ -107,7 +107,7 @@ KENGEN operates at the **execution layer**, outside the debate protocol. Unlike 
 
 ---
 
-### BANNIN (番人) — The Guard
+### BANNIN — The Guard
 
 > 番人 = watchman, guard. KENGEN's active enforcer.
 
