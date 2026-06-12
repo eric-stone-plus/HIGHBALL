@@ -34,7 +34,7 @@ HIGHBALL spans three domains: **verdict integrity** (KANSA, within QUINTE), **op
 
 ### Origin
 
-KANSA addresses the structural problem that **the entity producing a conclusion must not be the same entity that validates it.** This is not a preference — it is an epistemological necessity. A single arbiter who both drafts and approves the verdict has no external check on its own blind spots. The QUINTE protocol observed this in production: hm's R1 analysis was found to contain 24 errors across a single meta-audit (2026-06-11), with systematic patterns of numerical inflation, coverage deception, and unverifiable claims — none of which hm could self-detect.
+KANSA addresses the structural problem that **the entity producing a conclusion must not be the same entity that validates it.** This is not a preference — it is an epistemological necessity. A single arbiter who both drafts and approves the verdict has no external check on its own blind spots. The QUINTE protocol observed this in production: hm's R1 analysis was found to contain 24 errors across a single meta-audit (2026-06-10), with systematic patterns of numerical inflation, coverage deception, and unverifiable claims — none of which hm could self-detect.
 
 ### Function
 
@@ -158,7 +158,7 @@ QUINTE's four gates (雨門·鏡門·證門·閂門) check input quality and dis
 
 Production audits revealed systematic attention failures:
 - **Agent drift**: cc and cw repeatedly read wrong files, activated irrelevant associations, produced output on unrelated topics (2026-06-07, confirmed across 6+ sessions)
-- **Coverage deception**: hm claimed "26/26 files checked, 100% coverage" while simultaneously listing 5 unread files (2026-06-11 meta-audit)
+- **Coverage deception**: hm claimed "26/26 files checked, 100% coverage" while simultaneously listing 5 unread files (2026-06-10 meta-audit)
 - **Directional errors**: hm made 3 factual-direction errors in a single analysis, claiming "local added X" when X existed only in remote (2026-06-08)
 
 Existing countermeasures (閂門 anti-drift prompts, TASK: first-line restatements, trigger-word substitution) are *dispatch-time* defenses. They protect the prompt, not the process. KOZO is designed as a *continuous measurement layer* that tracks what happens after dispatch.
@@ -203,7 +203,7 @@ A positive CDA[hm, omp] means omp consistently finds errors in hm's analysis tha
 2026-06-08 production data confirms the pattern:
 - CDA[hm, omp] > 0 — omp caught 3 directional errors hm's 鏡門 gate missed
 - CDA[hm, cw] > 0 — cw found 8 categories of omissions in hm's "comprehensive" audit
-- CDA[hm, cc] > 0 — cc identified terminology/numerical errors (12 of 24 in 2026-06-11 audit)
+- CDA[hm, cc] > 0 — cc identified terminology/numerical errors (12 of 24 in 2026-06-10 audit)
 
 #### Diversity Score
 
