@@ -115,7 +115,7 @@ KENGEN operates at the **execution layer**, outside the debate protocol. Unlike 
 BANNIN patrols KENGEN's boundary — checking every gated command at execution time against the current session's authorization record.
 
 - **Mechanism**: Before executing any `git push`, grep the session for user authorization keywords
-- **Keywords**: `push` (English), `推送` (Chinese, simplified), `推` (Chinese, standalone)
+- **Keywords**: `push` — user must explicitly authorize with this word
 - **Behavior**: Unauthorized → BLOCKED. No clarify prompt — the agent has no right to ask. It waits silently.
 - **Placement**: Runs at the `terminal()` execution layer. Independent of the four gates.
 
