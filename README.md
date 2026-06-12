@@ -7,8 +7,7 @@
 | Question | Component | Origin | Role |
 |----------|-----------|--------|------|
 | *Sound?* | **KANSA** | QUINTE Phase 6 / R3 | Independent second review of every verdict |
-| *May I?* | **KENGEN** | HIGHBALL execution layer | Authorization perimeter — gates irreversible writes |
-| | **BANNIN** | KENGEN session guard | Silent block — no clarify, no negotiate |
+| *May I?* | **KENGEN** + **BANNIN** | HIGHBALL execution layer | Authorization perimeter — BANNIN session guard enforces silent block: no clarify, no negotiate |
 | *Attentive? Effective?* | **KOZO**  | HIGHBALL measurement layer | Attention compliance + cross-detection sensitivity |
 
 ## Architecture
