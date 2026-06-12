@@ -231,7 +231,7 @@ S[i,d] measures per-agent per-domain detection rate — the most ambitious KOZO 
 
 **Why quarantined.** The natural ground-truth proxy — "4-agent consensus = truth" — is circular in exactly the way QUINTE's own invariants warn against: *"Unanimous R1 can be shared blind spot."* If all 5 agents share DeepSeek v4-pro weights, consensus is model consistency, not truth. S[i,d] computed from consensus-as-proxy would converge to "which agent most resembles the herd" — precisely the opposite of what QUINTE values.
 
-**解除条件 (Unlock conditions):**
+**Unlock criteria:**
 1. Synthetic bug injection with known ground truth → calibration baseline
 2. Cross-validation against mechanical verification (SHA mismatches, file existence, command output)
 3. Demonstrated discrimination: S[i,d] must identify errors NOT already captured by CDA
