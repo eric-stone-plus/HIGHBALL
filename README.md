@@ -6,9 +6,9 @@
 
 | Question | Component | Origin | Role |
 |----------|-----------|--------|------|
-| *Sound?* | **KANSA** (監査) | QUINTE Phase 6 / R3 | Independent second review of every verdict |
-| *May I?* | **KENGEN** (権限) | HIGHBALL execution layer | Authorization perimeter — gates irreversible writes |
-| *Attentive? Effective?* | **KOZO** (小僧) | HIGHBALL measurement layer | Attention compliance + cross-detection sensitivity |
+| *Sound?* | **KANSA** | QUINTE Phase 6 / R3 | Independent second review of every verdict |
+| *May I?* | **KENGEN** | HIGHBALL execution layer | Authorization perimeter — gates irreversible writes |
+| *Attentive? Effective?* | **KOZO**  | HIGHBALL measurement layer | Attention compliance + cross-detection sensitivity |
 
 ## Architecture
 
