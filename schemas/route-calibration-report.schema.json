@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/route-calibration-report.schema.json",
+  "title": "HIGHBALL Route Calibration Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version",
+    "inputs",
+    "scanned_files",
+    "candidate_files",
+    "trace_files",
+    "invalid_trace_files",
+    "ignored_files",
+    "trace_count",
+    "recommendation",
+    "invalid_files",
+    "route_groups"
+  ],
+  "properties": {
+    "report_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "scanned_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "candidate_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "invalid_trace_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ignored_files": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "trace_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": [
+        "adopt",
+        "review",
+        "reroute",
+        "block",
+        "no_data"
+      ]
+    },
+    "invalid_files": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/invalidFile"
+      }
+    },
+    "route_groups": {
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/routeGroup"
+      }
+    }
+  },
+  "$defs": {
+    "invalidFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_file",
+        "status",
+        "reason"
+      ],
+      "properties": {
+        "source_file": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "invalid",
+            "scored_with_invalid"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "routeGroup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_count",
+        "recommendation",
+        "mean_evidence_score",
+        "mean_residual_yield",
+        "mean_closure_strength",
+        "mean_manifest_strength",
+        "mean_risk_penalty",
+        "mean_residuals_per_10k_tokens",
+        "mean_action_blocking_per_10k_tokens",
+        "residual_count",
+        "action_blocking_count",
+        "recommendation_counts",
+        "quality_gate_counts",
+        "caveats",
+        "sources"
+      ],
+      "properties": {
+        "trace_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommendation": {
+          "type": "string",
+          "enum": [
+            "adopt",
+            "review",
+            "reroute",
+            "block"
+          ]
+        },
+        "mean_evidence_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_residual_yield": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_closure_strength": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_manifest_strength": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_risk_penalty": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_residuals_per_10k_tokens": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_action_blocking_per_10k_tokens": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "residual_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action_blocking_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommendation_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "quality_gate_counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "caveats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

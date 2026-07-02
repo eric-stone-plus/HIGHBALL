@@ -1,0 +1,199 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/route-change-proposal.schema.json",
+  "title": "HIGHBALL Route Change Proposal",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "proposal_version",
+    "subject",
+    "inputs",
+    "evidence",
+    "candidate_changes",
+    "required_gates",
+    "status",
+    "non_authorization"
+  ],
+  "properties": {
+    "proposal_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_group",
+        "action_boundary",
+        "policy_recommendation",
+        "proposed_change"
+      ],
+      "properties": {
+        "route_group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_boundary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy_recommendation": {
+          "type": "string",
+          "enum": [
+            "keep",
+            "watch",
+            "reroute",
+            "block",
+            "insufficient"
+          ]
+        },
+        "proposed_change": {
+          "type": "string",
+          "enum": [
+            "keep_route_group",
+            "watch_route_group",
+            "reroute_route_group",
+            "block_route_group",
+            "collect_evidence"
+          ]
+        }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_policy_report_ref"
+      ],
+      "properties": {
+        "route_policy_report_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "calibration_recommendation",
+        "outcome_signal",
+        "baseline_recommendation",
+        "policy_recommendation"
+      ],
+      "properties": {
+        "calibration_recommendation": {
+          "type": "string",
+          "enum": [
+            "adopt",
+            "review",
+            "reroute",
+            "block",
+            "no_data"
+          ]
+        },
+        "outcome_signal": {
+          "type": "string",
+          "enum": [
+            "supports_route",
+            "weakens_route",
+            "mixed",
+            "insufficient"
+          ]
+        },
+        "baseline_recommendation": {
+          "type": "string",
+          "enum": [
+            "prefer_target",
+            "prefer_baseline",
+            "block_target",
+            "watch",
+            "insufficient",
+            "not_provided"
+          ]
+        },
+        "policy_recommendation": {
+          "type": "string",
+          "enum": [
+            "keep",
+            "watch",
+            "reroute",
+            "block",
+            "insufficient"
+          ]
+        }
+      }
+    },
+    "candidate_changes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/candidateChange"
+      }
+    },
+    "required_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "proposed",
+        "accepted",
+        "rejected",
+        "superseded"
+      ]
+    },
+    "non_authorization": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "candidateChange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "action",
+        "target",
+        "scope",
+        "affected_paths",
+        "rationale"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "rationale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

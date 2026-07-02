@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/route-pair-manifest.schema.json",
+  "title": "HIGHBALL Route Pair Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "pair_manifest_version",
+    "experiment_id",
+    "route_group",
+    "baseline_route_group",
+    "action_boundary",
+    "minimum_pair_count",
+    "pairs",
+    "non_authorization"
+  ],
+  "properties": {
+    "pair_manifest_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route_group": {
+      "type": "string",
+      "minLength": 1
+    },
+    "baseline_route_group": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action_boundary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "minimum_pair_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "pairs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/pair"
+      }
+    },
+    "non_authorization": {
+      "type": "string",
+      "const": "Route pairing reports do not authorize action, dispatch agents, or modify routing rules."
+    }
+  },
+  "$defs": {
+    "pair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question",
+        "target_trace_ref",
+        "baseline_trace_ref"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_trace_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline_trace_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

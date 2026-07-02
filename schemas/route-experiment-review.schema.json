@@ -1,0 +1,422 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/route-experiment-review.schema.json",
+  "title": "HIGHBALL Route Experiment Review",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "review_version",
+    "experiment_id",
+    "route_group",
+    "action_boundary",
+    "inputs",
+    "cohort",
+    "target_route",
+    "baseline",
+    "pairing",
+    "outcome",
+    "success",
+    "stopping_flags",
+    "review_verdict",
+    "decision_reasons",
+    "required_next_steps",
+    "non_authorization"
+  ],
+  "properties": {
+    "review_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route_group": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action_boundary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_ref",
+        "calibration_report_ref",
+        "baseline_report_ref",
+        "pairing_report_ref",
+        "outcome_ledger_ref"
+      ],
+      "properties": {
+        "manifest_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "calibration_report_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline_report_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outcome_ledger_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "pairing_report_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "cohort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planned_minimum_trace_count",
+        "observed_trace_count",
+        "minimum_trace_count_met",
+        "planned_minimum_candidate_files",
+        "observed_candidate_files",
+        "minimum_candidate_files_met",
+        "planned_maximum_invalid_trace_files",
+        "observed_invalid_trace_files",
+        "invalid_trace_limit_met",
+        "planned_inputs_matched"
+      ],
+      "properties": {
+        "planned_minimum_trace_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_trace_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_trace_count_met": {
+          "type": "boolean"
+        },
+        "planned_minimum_candidate_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_candidate_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_candidate_files_met": {
+          "type": "boolean"
+        },
+        "planned_maximum_invalid_trace_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "observed_invalid_trace_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid_trace_limit_met": {
+          "type": "boolean"
+        },
+        "planned_inputs_matched": {
+          "type": "boolean"
+        }
+      }
+    },
+    "target_route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "present",
+        "recommendation",
+        "trace_count",
+        "mean_evidence_score",
+        "mean_closure_strength",
+        "mean_risk_penalty",
+        "mean_residuals_per_10k_tokens",
+        "metric_thresholds_met"
+      ],
+      "properties": {
+        "present": {
+          "type": "boolean"
+        },
+        "recommendation": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mean_evidence_score": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_closure_strength": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_risk_penalty": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "mean_residuals_per_10k_tokens": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "metric_thresholds_met": {
+          "type": "boolean"
+        }
+      }
+    },
+    "baseline": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "provided",
+        "required_route_groups",
+        "present_route_groups",
+        "same_action_boundary",
+        "minimum_trace_count_per_baseline_met",
+        "recommendation",
+        "recommendation_allowed"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "provided": {
+          "type": "boolean"
+        },
+        "required_route_groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "present_route_groups": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "same_action_boundary": {
+          "type": "boolean"
+        },
+        "minimum_trace_count_per_baseline_met": {
+          "type": "boolean"
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendation_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "provided",
+        "entry_count",
+        "minimum_entry_count_met",
+        "planned_outcome_ledger_matched",
+        "calibration_signal",
+        "signal_allowed",
+        "regression_count"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "provided": {
+          "type": "boolean"
+        },
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minimum_entry_count_met": {
+          "type": "boolean"
+        },
+        "planned_outcome_ledger_matched": {
+          "type": "boolean"
+        },
+        "calibration_signal": {
+          "type": "string",
+          "minLength": 1
+        },
+        "signal_allowed": {
+          "type": "boolean"
+        },
+        "regression_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "success": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "calibration_recommendation_allowed",
+        "baseline_recommendation_allowed",
+        "pairing_recommendation_allowed",
+        "outcome_signal_allowed",
+        "metric_thresholds_met"
+      ],
+      "properties": {
+        "calibration_recommendation_allowed": {
+          "type": "boolean"
+        },
+        "baseline_recommendation_allowed": {
+          "type": "boolean"
+        },
+        "outcome_signal_allowed": {
+          "type": "boolean"
+        },
+        "metric_thresholds_met": {
+          "type": "boolean"
+        },
+        "pairing_recommendation_allowed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "stopping_flags": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "block_recommendation",
+        "baseline_preference",
+        "pairing_preference",
+        "outcome_regression",
+        "maximum_trace_count_reached"
+      ],
+      "properties": {
+        "block_recommendation": {
+          "type": "boolean"
+        },
+        "baseline_preference": {
+          "type": "boolean"
+        },
+        "outcome_regression": {
+          "type": "boolean"
+        },
+        "maximum_trace_count_reached": {
+          "type": "boolean"
+        },
+        "pairing_preference": {
+          "type": "boolean"
+        }
+      }
+    },
+    "review_verdict": {
+      "type": "string",
+      "enum": [
+        "supports_policy_review",
+        "needs_more_evidence",
+        "stop_blocked",
+        "plan_violation"
+      ]
+    },
+    "decision_reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required_next_steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "non_authorization": {
+      "type": "string",
+      "const": "Route experiment reviews do not authorize action, dispatch agents, or modify routing rules."
+    },
+    "pairing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "provided",
+        "planned_pair_manifest_matched",
+        "same_experiment",
+        "same_route_group",
+        "same_action_boundary",
+        "minimum_pair_count_met",
+        "pair_count",
+        "invalid_pair_count",
+        "recommendation",
+        "recommendation_allowed"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "provided": {
+          "type": "boolean"
+        },
+        "planned_pair_manifest_matched": {
+          "type": "boolean"
+        },
+        "same_experiment": {
+          "type": "boolean"
+        },
+        "same_route_group": {
+          "type": "boolean"
+        },
+        "same_action_boundary": {
+          "type": "boolean"
+        },
+        "minimum_pair_count_met": {
+          "type": "boolean"
+        },
+        "pair_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "invalid_pair_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendation_allowed": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

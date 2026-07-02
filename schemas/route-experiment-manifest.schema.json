@@ -1,0 +1,324 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/route-experiment-manifest.schema.json",
+  "title": "HIGHBALL Route Experiment Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_version",
+    "experiment_id",
+    "objective",
+    "route_group",
+    "action_boundary",
+    "inputs",
+    "cohort_requirements",
+    "baseline_requirements",
+    "pairing_requirements",
+    "outcome_requirements",
+    "success_criteria",
+    "stopping_rule",
+    "required_gates",
+    "status",
+    "non_authorization"
+  ],
+  "properties": {
+    "manifest_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "experiment_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 1
+    },
+    "route_group": {
+      "type": "string",
+      "minLength": 1
+    },
+    "action_boundary": {
+      "type": "string",
+      "enum": [
+        "none",
+        "reversible",
+        "protected_write",
+        "irreversible"
+      ]
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "planned_trace_inputs",
+        "planned_outcome_ledger_ref"
+      ],
+      "properties": {
+        "planned_trace_inputs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "planned_outcome_ledger_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "cohort_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_trace_count",
+        "minimum_candidate_files",
+        "maximum_invalid_trace_files"
+      ],
+      "properties": {
+        "minimum_trace_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "minimum_candidate_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maximum_invalid_trace_files": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "baseline_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "baseline_route_groups",
+        "minimum_trace_count_per_baseline",
+        "same_action_boundary"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "baseline_route_groups": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "minimum_trace_count_per_baseline": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "same_action_boundary": {
+          "type": "boolean",
+          "const": true
+        }
+      }
+    },
+    "outcome_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "minimum_entry_count"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "minimum_entry_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "success_criteria": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "minimum_mean_evidence_score",
+        "minimum_mean_closure_strength",
+        "maximum_mean_risk_penalty",
+        "minimum_mean_residuals_per_10k_tokens",
+        "allowed_calibration_recommendations",
+        "allowed_baseline_recommendations",
+        "allowed_pairing_recommendations",
+        "allowed_outcome_signals"
+      ],
+      "properties": {
+        "minimum_mean_evidence_score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "minimum_mean_closure_strength": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "maximum_mean_risk_penalty": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "minimum_mean_residuals_per_10k_tokens": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "allowed_calibration_recommendations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "adopt",
+              "review",
+              "reroute",
+              "block"
+            ]
+          }
+        },
+        "allowed_baseline_recommendations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "prefer_target",
+              "prefer_baseline",
+              "block_target",
+              "watch",
+              "insufficient"
+            ]
+          }
+        },
+        "allowed_outcome_signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "supports_route",
+              "weakens_route",
+              "mixed",
+              "insufficient"
+            ]
+          }
+        },
+        "allowed_pairing_recommendations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": [
+              "prefer_target",
+              "prefer_baseline",
+              "block_target",
+              "block_baseline",
+              "watch",
+              "insufficient"
+            ]
+          }
+        }
+      }
+    },
+    "stopping_rule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "stop_on_block_recommendation",
+        "stop_on_baseline_preference",
+        "stop_on_pairing_preference",
+        "stop_on_outcome_regression",
+        "maximum_trace_count"
+      ],
+      "properties": {
+        "stop_on_block_recommendation": {
+          "type": "boolean"
+        },
+        "stop_on_baseline_preference": {
+          "type": "boolean"
+        },
+        "stop_on_outcome_regression": {
+          "type": "boolean"
+        },
+        "maximum_trace_count": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        },
+        "stop_on_pairing_preference": {
+          "type": "boolean"
+        }
+      }
+    },
+    "required_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planned",
+        "active",
+        "closed",
+        "superseded"
+      ]
+    },
+    "non_authorization": {
+      "type": "string",
+      "const": "Route experiment manifests do not authorize action, dispatch agents, or modify routing rules."
+    },
+    "pairing_requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "planned_pair_manifest_ref",
+        "minimum_pair_count"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "planned_pair_manifest_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "minimum_pair_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

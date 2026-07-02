@@ -1,0 +1,833 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/action-packet.schema.json",
+  "title": "HIGHBALL Action Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "packet_version",
+    "route_request",
+    "route_decision",
+    "trace",
+    "validation",
+    "quality",
+    "execution_evidence",
+    "action_decision",
+    "decision_reasons",
+    "required_next_steps"
+  ],
+  "properties": {
+    "packet_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "route_request": {
+      "$ref": "#/$defs/routeRequest"
+    },
+    "route_decision": {
+      "$ref": "#/$defs/routeDecision"
+    },
+    "trace": {
+      "$ref": "#/$defs/residualTrace"
+    },
+    "validation": {
+      "$ref": "#/$defs/validation"
+    },
+    "quality": {
+      "$ref": "#/$defs/quality"
+    },
+    "execution_evidence": {
+      "$ref": "#/$defs/executionEvidence"
+    },
+    "action_decision": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "review",
+        "block"
+      ]
+    },
+    "decision_reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required_next_steps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "$defs": {
+    "routeRequest": {
+      "type": "object",
+      "required": [
+        "question",
+        "action_boundary",
+        "change_class",
+        "affected_paths",
+        "risk"
+      ],
+      "properties": {
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_boundary": {
+          "type": "string",
+          "enum": [
+            "none",
+            "reversible",
+            "protected_write",
+            "irreversible"
+          ]
+        },
+        "change_class": {
+          "type": "string",
+          "enum": [
+            "claim",
+            "code",
+            "protocol",
+            "architecture",
+            "config",
+            "credential",
+            "deletion",
+            "deployment",
+            "financial",
+            "legal"
+          ]
+        },
+        "affected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "executable": {
+          "type": "boolean"
+        },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL",
+            "P0"
+          ]
+        },
+        "trace_quality_gate": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "pass",
+            "review",
+            "block"
+          ]
+        },
+        "open_high_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "user_authorized_push": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "routeDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "reason",
+        "required_artifacts",
+        "residual_trace_required",
+        "kengen_authorization_required"
+      ],
+      "properties": {
+        "route": {
+          "type": "string",
+          "enum": [
+            "direct-evidence",
+            "MAGI",
+            "QUINTE",
+            "human-review",
+            "block"
+          ]
+        },
+        "reason": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "residual_trace_required": {
+          "type": "boolean"
+        },
+        "kengen_authorization_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "errors",
+        "blocks"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "valid",
+            "blocked",
+            "invalid"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question",
+        "instrument",
+        "action_boundary",
+        "highball_decision",
+        "residual_count",
+        "high_risk_count",
+        "action_blocking_count",
+        "open_high_risk_count",
+        "unsupported_high_risk_closure_count",
+        "silent_collapse_count",
+        "unresolved_count",
+        "decision_conflict_count",
+        "evidence_coverage",
+        "closure_evidence_coverage",
+        "action_blocking_closure_coverage",
+        "trial_manifest_present",
+        "base_model_relation",
+        "perspective_count",
+        "independent_first_pass_count",
+        "perturbation_axis_count",
+        "independence_control_count",
+        "contamination_risk_count",
+        "same_model_flag",
+        "cost_fields_present",
+        "quality_gate",
+        "warnings"
+      ],
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "instrument": {
+          "type": "string",
+          "enum": [
+            "MAGI",
+            "QUINTE",
+            "direct-evidence",
+            "human"
+          ]
+        },
+        "action_boundary": {
+          "type": "string",
+          "enum": [
+            "none",
+            "reversible",
+            "protected_write",
+            "irreversible"
+          ]
+        },
+        "highball_decision": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "pass",
+            "review",
+            "block",
+            "escalate"
+          ]
+        },
+        "residual_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action_blocking_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_high_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsupported_high_risk_closure_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "silent_collapse_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolved_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decision_conflict_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_coverage": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "closure_evidence_coverage": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "action_blocking_closure_coverage": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "trial_manifest_present": {
+          "type": "boolean"
+        },
+        "base_model_relation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "unknown",
+            "same_model",
+            "same_family",
+            "heterogeneous_models",
+            "mixed",
+            "human",
+            "direct_evidence",
+            null
+          ]
+        },
+        "perspective_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "independent_first_pass_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "perturbation_axis_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "independence_control_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contamination_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "same_model_flag": {
+          "type": "boolean"
+        },
+        "cost_fields_present": {
+          "type": "boolean"
+        },
+        "quality_gate": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "review",
+            "block"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "executionEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "status",
+        "required_phases",
+        "dispatch_ledgers",
+        "errors",
+        "warnings"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "missing",
+            "complete",
+            "blocked",
+            "degraded",
+            "invalid"
+          ]
+        },
+        "required_phases": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["R1", "R2", "R3"]
+          }
+        },
+        "dispatch_ledgers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/dispatchLedgerSummary"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "dispatchLedgerSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ledger_ref",
+        "phase",
+        "status",
+        "phase_progression_allowed",
+        "required_count",
+        "succeeded_count",
+        "failed_count",
+        "party_ids",
+        "blocking_failures"
+      ],
+      "properties": {
+        "ledger_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "phase": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": ["R1", "R2", "R3", null]
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": ["complete", "blocked", "degraded", null]
+        },
+        "phase_progression_allowed": {
+          "type": "boolean"
+        },
+        "required_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "succeeded_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "party_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocking_failures": {
+          "type": "array"
+        }
+      }
+    },
+    "residualTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question",
+        "instrument",
+        "residuals",
+        "action_boundary",
+        "highball_decision"
+      ],
+      "properties": {
+        "trace_version": {
+          "type": "string"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instrument": {
+          "type": "string",
+          "enum": [
+            "MAGI",
+            "QUINTE",
+            "direct-evidence",
+            "human"
+          ]
+        },
+        "residuals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/residual"
+          }
+        },
+        "action_boundary": {
+          "type": "string",
+          "enum": [
+            "none",
+            "reversible",
+            "protected_write",
+            "irreversible"
+          ]
+        },
+        "highball_decision": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "pass",
+            "review",
+            "block",
+            "escalate"
+          ]
+        },
+        "trial_manifest": {
+          "$ref": "#/$defs/trialManifest"
+        }
+      }
+    },
+    "trialManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_version",
+        "base_model_relation",
+        "perspective_count",
+        "perspectives",
+        "perturbation_axes",
+        "independence_controls",
+        "contamination_risks",
+        "cost"
+      ],
+      "properties": {
+        "manifest_version": {
+          "type": "string"
+        },
+        "base_model_relation": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "same_model",
+            "same_family",
+            "heterogeneous_models",
+            "mixed",
+            "human",
+            "direct_evidence"
+          ]
+        },
+        "perspective_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "perspectives": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/perspective"
+          }
+        },
+        "perturbation_axes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "independence_controls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "contamination_risks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "cost": {
+          "$ref": "#/$defs/trialCost"
+        }
+      }
+    },
+    "perspective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "route",
+        "artifact",
+        "prompt_hash",
+        "independent_first_pass"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "independent_first_pass": {
+          "type": "boolean"
+        }
+      }
+    },
+    "trialCost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_tokens",
+        "wall_time_seconds",
+        "tool_calls",
+        "human_minutes"
+      ],
+      "properties": {
+        "total_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "wall_time_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tool_calls": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "human_minutes": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "residual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "severity",
+        "type",
+        "source",
+        "finding",
+        "affected_paths",
+        "error_signature",
+        "evidence",
+        "disposition",
+        "required_closure",
+        "closure_state",
+        "closure_evidence",
+        "scope"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL",
+            "P0"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "contradiction",
+            "omission",
+            "evidence_gap",
+            "confidence_mismatch",
+            "drift",
+            "execution_mismatch",
+            "silent_collapse"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finding": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "error_signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "falsified",
+            "unresolved",
+            "escalated",
+            "discarded"
+          ]
+        },
+        "required_closure": {
+          "type": "string",
+          "enum": [
+            "none",
+            "edit",
+            "test",
+            "command",
+            "block",
+            "waiver",
+            "human_review"
+          ]
+        },
+        "closure_state": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed",
+            "blocked",
+            "waived",
+            "not_applicable"
+          ]
+        },
+        "closure_evidence": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "scope": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

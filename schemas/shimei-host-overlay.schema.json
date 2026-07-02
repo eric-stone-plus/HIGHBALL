@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/shimei-host-overlay.schema.json",
+  "title": "HIGHBALL SHIMEI Host Overlay",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "overlay_version",
+    "profile_ref",
+    "platform",
+    "prompt_policy",
+    "routes",
+    "non_authorization"
+  ],
+  "properties": {
+    "overlay_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "profile_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "platform": {
+      "type": "string",
+      "enum": [
+        "macos",
+        "windows",
+        "linux",
+        "unknown"
+      ]
+    },
+    "prompt_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "long_prompt_ref",
+        "shell_expansion_allowed"
+      ],
+      "properties": {
+        "long_prompt_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "shell_expansion_allowed": {
+          "type": "boolean",
+          "const": false
+        }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    },
+    "non_authorization": {
+      "type": "string",
+      "const": "SHIMEI host overlays do not authorize action, dispatch agents, or modify routing rules."
+    }
+  },
+  "$defs": {
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "route_type",
+        "route_id",
+        "required",
+        "command",
+        "entrypoint",
+        "artifact_policy"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route_type": {
+          "type": "string",
+          "enum": [
+            "hm",
+            "quinte_party",
+            "quinte_auditor_b",
+            "magi_perspective",
+            "implementation_audit",
+            "system_audit",
+            "direct_evidence"
+          ]
+        },
+        "route_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required": {
+          "type": "boolean",
+          "const": true
+        },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "entrypoint": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "executable",
+            "verification_command",
+            "verification_evidence",
+            "is_custom_wrapper"
+          ],
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "host_session",
+                "native_cli",
+                "package_manager_shim"
+              ]
+            },
+            "executable": {
+              "type": "string",
+              "minLength": 1
+            },
+            "verification_command": {
+              "type": "string",
+              "minLength": 1
+            },
+            "verification_evidence": {
+              "type": "string",
+              "minLength": 1
+            },
+            "is_custom_wrapper": {
+              "type": "boolean",
+              "const": false
+            }
+          }
+        },
+        "artifact_policy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "separate_output_artifact",
+            "requires_task_restatement"
+          ],
+          "properties": {
+            "separate_output_artifact": {
+              "type": "boolean",
+              "const": true
+            },
+            "requires_task_restatement": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    }
+  }
+}
