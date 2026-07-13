@@ -1,28 +1,35 @@
 # HIGHBALL (ハイボール)
 
-> Hermes host-side operation layer for binding agent routes reliably.
+> Hermes outer control plane for routing and guarding bounded operations.
 
-HIGHBALL is the operational layer around the Hermes host. It answers only
-runtime questions:
+HIGHBALL is the outer control plane around the Hermes host. It answers only
+boundary questions:
 
-- Which real CLI should this alias call?
+- Which bounded product route should handle this work?
 - Which evidence route should this residual-bearing action take?
-- Is this action authorized?
-- Is the runtime session still healthy?
+- Is the resulting external action authorized?
+- May a protected write proceed with the available residual closure?
 
-The `hermes-core-rules-*` repositories are distribution packages. They mirror
-the current operational rules into concrete Hermes profiles (`SOUL.md`,
-`USER.md`, `MEMORY.md`, `SKILL.md`, and related references) for a platform.
-They are not separate protocol authorities.
+When SHIMEI selects QUINTE, it invokes the installed `quinte` CLI as one atomic
+product boundary. HIGHBALL does not reconstruct, inspect, or override the
+QUINTE workflow behind that boundary.
+
+`hermes-technical-profile-mac` and `hermes-technical-profile-win` are the
+current platform profile repositories. They mirror operational rules into
+concrete Hermes profiles. Archived `hermes-core-rules-*` repositories are
+historical records and must not receive new runtime rules. None of these is a
+separate protocol authority.
 
 ## Runtime Components
 
-Only these components can block, route, authorize, or clean up a Hermes
-operation.
+Only these components can route, authorize, or guard a Hermes operation.
 
-- SHIMEI, 指名: asks which agent is actually being called. It owns alias-to-CLI binding and dispatch tables.
-- KENGEN, 権限: asks whether an action may happen. It owns the authorization perimeter for push, delete, and config writes.
-- BANNIN, 番人: asks whether the session is guarded. It owns runtime guard checks, protected-file checks, and stale process cleanup.
+- SHIMEI, 指名: selects a bounded product route and binds it to one verified
+  entrypoint. For QUINTE, that entrypoint is the atomic `quinte` CLI.
+- KENGEN, 権限: decides whether an external action may happen. It owns the
+  authorization perimeter for push, delete, deployment, and config writes.
+- BANNIN, 番人: guards protected writes and enforces residual closure before
+  the action crosses its boundary.
 
 Non-runtime material belongs outside the dispatch path:
 
@@ -30,62 +37,53 @@ Non-runtime material belongs outside the dispatch path:
 - STORM / Co-STORM may inform SOUL prompt construction.
 - Neither creates a HIGHBALL runtime component, agent, vote, or permission.
 
-## SHIMEI — Dispatch Identity
+## SHIMEI — Product Route Identity
 
-SHIMEI is the routing contract for Hermes. It binds agent aliases to verified
-tools and native invocation shapes. Each host resolves executable entrypoints
+SHIMEI is the routing contract for Hermes. It binds a selected product route to
+a verified entrypoint. Each host resolves executable entrypoints
 with `command -v` or `Get-Command` before dispatch. Package-manager shims are
 acceptable installed entrypoints after verification. Custom wrapper dispatch
 scripts are forbidden for protected dispatch because they hide drift and stale
 assumptions.
 
-HIGHBALL defines the route contract, not the concrete public tool lineup.
-Concrete executable names, model/provider choices, credentials, and
-platform-specific command lines belong in the technical profile or host
-overlay.
+For QUINTE, SHIMEI binds exactly one product route to the installed `quinte`
+entrypoint. It may pass the task and product-level options supported by that
+CLI, then waits for the CLI's product-level outcome. It does not bind or invoke
+QUINTE agents, auditors, adapters, providers, or model-specific commands.
 
-Route binding requirements:
-
-- hm is the current host session with phase-block authority.
-- QUINTE Party A-E are five independent native CLI routes with separate artifacts in the host SHIMEI overlay.
-- QUINTE Auditor B is an independent R3 route and not an R1/R2 substitute.
-- MAGI Perspective A-C are three independently formed inquiry routes only if explicitly bound in the host SHIMEI overlay.
-- Implementation or system audit routes provide direct runtime evidence for code, tests, logs, or system facts.
+QUINTE alone owns its roster, phases, lane dispatch, concurrency, provider and
+model selection, credentials, artifacts, worker lifecycle, cleanup, retry, and
+finalization. In particular, the QUINTE scheduler owns R2 serial pacing and
+typed, bounded retry for HTTP 429 responses. HIGHBALL must not add a second
+retry loop, fan out R2, or substitute another route after a QUINTE attempt.
 
 MAGI remains a Hermes Agent Protocol. A host may bind MAGI perspectives only
 through an explicit SHIMEI overlay. Do not dispatch historical or inferred
 routes.
 
-Long prompts should be stored in `$AUDIT/task.md` and referenced from a short
-task string. Large command-line prompt expansion is a known source of dropped
-streams and shell quoting errors.
+SHIMEI treats the `quinte` process status and product-level result as the route
+outcome. QUINTE decides whether its internal attempts and outputs are valid.
+HIGHBALL may block the outer action when the product outcome is absent or
+unsuccessful, but it must not repair internal artifacts or retry internal
+lanes.
 
-Output validity is part of routing. Exit status alone is not success: 0-byte
-files, startup-banner-only output, and sessions that never write the requested
-artifact are failed dispatches. Inspect the delegate log/transcript, then retry
-inside the same SHIMEI route. Do not substitute an unbound route for the
-configured Auditor B route.
-
-`bin/validate-shimei-host-overlay.py` validates host technical-profile overlays
-for this contract. It checks route identity, entrypoint verification evidence,
-custom-wrapper exclusion, long-prompt policy, QUINTE Party A-E order, Auditor B
-binding, optional MAGI Perspective A-C completeness, and artifact policy.
-Concrete provider and model choices remain host-overlay facts, not public
-protocol defaults.
+The existing v1 SHIMEI host-overlay schema and validator describe the retired
+per-agent routing contract. They remain compatibility tools for archived
+overlays and are not an active QUINTE dispatch surface.
 
 ## Rules Repositories
 
-- `hermes-core-rules-mac-x86`: macOS profile and rules distribution.
-- `hermes-core-rules-win`: Windows profile and rules distribution.
+- `hermes-technical-profile-mac`: current macOS profile distribution.
+- `hermes-technical-profile-win`: current Windows profile distribution.
 - `.hermes/profiles/technical`: host-local Hermes technical profile consumed
   by the current runtime.
 
 Protocol content belongs in the owning repo: QUINTE protocol in QUINTE, MAGI
 protocol in MAGI, RASHOMON philosophy in RASHOMON, and Hermes host operation
-rules in HIGHBALL. The rules repos mirror these decisions into the runtime
-technical profile. If the routing contract changes, update HIGHBALL first. If
-only a concrete host binding changes, update the technical profile, host
-overlay, and platform rules.
+rules in HIGHBALL. The technical-profile repos mirror these decisions into the
+runtime. If the routing contract changes, update HIGHBALL first. If only a
+concrete host binding changes, update the active technical profile and its
+current macOS/Windows repositories.
 
 ## KENGEN — Authorization Perimeter
 
@@ -99,7 +97,7 @@ KENGEN is policy. It says whether an action is allowed.
 
 ## BANNIN — Runtime Guard
 
-BANNIN enforces session-level checks in the Hermes runtime. It is deliberately
+BANNIN enforces protected-write checks in the Hermes runtime. It is deliberately
 smaller than the old governance model:
 
 - detect protected engineering writes to public repo `README*`, `specs/**`, and
@@ -107,8 +105,7 @@ smaller than the old governance model:
 - require a QUINTE trail before protocol or protected public-repo rewrites
 - require high-risk findings in that trail to be closed, blocked, waived, or
   not applicable before protected writes proceed
-- block unauthorized push attempts through KENGEN policy
-- clean up stale SHIMEI-dispatched processes by precise PID matching
+- block unauthorized external actions through KENGEN policy
 
 BANNIN is mechanism. It checks the current session and either passes or blocks.
 The standalone shell guard enforces verdict-trail existence. When the verdict
@@ -213,19 +210,19 @@ before BANNIN and KENGEN enforcement.
 
 `bin/build-action-packet.py` combines a route request, route decision, residual
 trace, validation result, quality metrics, and required execution evidence into
-one reviewable Action Packet for a proposed action. When QUINTE is the selected
-route, complete R1, R2, and R3 dispatch ledgers are required before the packet
-can pass or review; missing, blocked, degraded, or invalid dispatch evidence
-blocks the action.
+one reviewable Action Packet for a proposed action. The current v1 packet
+builder, validator, and schema still encode the retired per-phase QUINTE ledger
+shape and are compatibility tools for archived packets only. An active
+integration binds the atomic QUINTE product outcome and does not revalidate
+phase, lane, agent, or retry details.
 `schemas/action-packet.schema.json` defines the portable packet shape, and
 `bin/validate-action-packet.py` independently recomputes route, validation,
 quality, execution evidence, and boundary decision to catch malformed or
 inconsistent packets.
 
-`schemas/shimei-host-overlay.schema.json` defines the portable host-overlay
-shape for SHIMEI route bindings. It lets platform rules and technical profiles
-be checked without publishing concrete credentials or provider choices in
-HIGHBALL.
+`schemas/shimei-host-overlay.schema.json` documents the retired v1 per-agent
+overlay shape for compatibility. Active integrations bind the `quinte`
+entrypoint as one SHIMEI product route.
 
 ## Non-Runtime References
 
@@ -236,8 +233,10 @@ change SHIMEI routing, KENGEN authorization, or BANNIN checks.
 
 The following concepts are no longer HIGHBALL components:
 
-- Legacy R3 audit labels: QUINTE owns the R3 contract; HIGHBALL only defines
-  how a host binds its Auditor B route.
+- Per-agent QUINTE bindings and audit labels: QUINTE owns its complete internal
+  workflow; HIGHBALL binds only the atomic `quinte` CLI.
+- QUINTE process cleanup and output repair: the QUINTE scheduler owns worker
+  lifecycle, recovery, and finalization.
 - Other unimplemented governance labels: removed until there is a real
   maintained implementation.
 - Theoretical foundation essays: move broad philosophy to RASHOMON.
@@ -245,7 +244,7 @@ The following concepts are no longer HIGHBALL components:
 ## Specs
 
 - [SHIMEI routing](specs/shimei-routing.md)
-- [Process cleanup](specs/process-cleanup.md)
+- [Retired process cleanup contract](specs/process-cleanup.md)
 - [Action packet](specs/action-packet.md)
 - [Residual closure](specs/residual-closure.md)
 - [Residual routing](specs/residual-routing.md)

@@ -92,18 +92,18 @@ def route_request(request: dict[str, Any]) -> dict[str, Any]:
     elif action_boundary == "irreversible":
         route = "QUINTE"
         reasons.append("irreversible boundary requires adversarial residual exposure")
-        required_artifacts.append("QUINTE R3 residual trace")
-        required_artifacts.append("QUINTE complete R1/R2/R3 dispatch ledgers")
+        required_artifacts.append("QUINTE residual closure trace")
+        required_artifacts.append("completed atomic QUINTE product outcome")
     elif action_boundary == "protected_write":
         route = "QUINTE"
         reasons.append("protected write requires QUINTE residual trace before action")
-        required_artifacts.append("QUINTE R3 residual trace")
-        required_artifacts.append("QUINTE complete R1/R2/R3 dispatch ledgers")
+        required_artifacts.append("QUINTE residual closure trace")
+        required_artifacts.append("completed atomic QUINTE product outcome")
     elif change_class in QUINTE_CLASSES:
         route = "QUINTE"
         reasons.append(f"{change_class} change requires adversarial review")
-        required_artifacts.append("QUINTE R3 residual trace")
-        required_artifacts.append("QUINTE complete R1/R2/R3 dispatch ledgers")
+        required_artifacts.append("QUINTE residual closure trace")
+        required_artifacts.append("completed atomic QUINTE product outcome")
     elif executable and action_boundary in {"none", "reversible"}:
         route = "direct-evidence"
         reasons.append("claim is executable or source-verifiable")
@@ -115,8 +115,8 @@ def route_request(request: dict[str, Any]) -> dict[str, Any]:
     elif risk in HIGH_RISKS:
         route = "QUINTE"
         reasons.append("high risk requires adversarial residual exposure")
-        required_artifacts.append("QUINTE R3 residual trace")
-        required_artifacts.append("QUINTE complete R1/R2/R3 dispatch ledgers")
+        required_artifacts.append("QUINTE residual closure trace")
+        required_artifacts.append("completed atomic QUINTE product outcome")
     else:
         route = "MAGI"
         reasons.append("default independent stability review")

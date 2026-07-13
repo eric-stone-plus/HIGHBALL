@@ -4,6 +4,11 @@
 > records why a route was selected, what trace was evaluated, and whether the
 > action can cross its boundary.
 
+Implementation status: the existing v1 schema, builder, and validator encode a
+retired per-phase QUINTE ledger shape. They remain available only for archived
+packet compatibility. New integrations bind an atomic QUINTE product outcome;
+they must not use the v1 fields to dispatch, retry, or supervise QUINTE.
+
 ## 1. Purpose
 
 Residual traces are claim artifacts. Route decisions are path artifacts.
@@ -34,14 +39,14 @@ reuse a verdict, route decision, or metric outside its original scope.
 `schemas/residual-trace.schema.json`. `quality` follows RASHOMON
 `specs/residual-quality-metrics.md`, including trial-manifest metrics when the
 trace declares perturbation conditions.
-`execution_evidence` records whether the selected route requires dispatch
-proof and, when QUINTE is selected, summarizes the R1, R2, and R3 dispatch
-ledgers. The packet builder recomputes the summary from the referenced ledger
-files; a packet cannot satisfy this field by self-reporting completion.
+`execution_evidence` records whether the selected route requires product-level
+execution proof. When QUINTE is selected, it binds the atomic CLI outcome. The
+packet does not summarize or validate QUINTE's internal phase, lane, agent,
+retry, pacing, or artifact state.
 
-The canonical machine-readable packet schema is
-`schemas/action-packet.schema.json`. HIGHBALL validates concrete packets with
-`bin/validate-action-packet.py`.
+`schemas/action-packet.schema.json` and `bin/validate-action-packet.py` are the
+legacy v1 compatibility implementation. They are not an active QUINTE control
+surface.
 
 ## 3. Decision Rule
 
@@ -50,7 +55,7 @@ The Action Packet is conservative:
 1. Structural validation errors set `action_decision` to `block`.
 2. Validator block findings set `action_decision` to `block`.
 3. Route `block` sets `action_decision` to `block`.
-4. Required QUINTE dispatch evidence that is missing, invalid, blocked, or
+4. Required QUINTE product outcome that is missing, invalid, blocked, or
    degraded sets `action_decision` to `block`.
 5. Quality gate `block` sets `action_decision` to `block`.
 6. Route and trace instrument mismatch sets `action_decision` to `review`,
@@ -76,15 +81,12 @@ commitment, or money movement. KENGEN still owns authorization.
 Mismatch does not always mean the work is invalid. It means the packet cannot
 prove that the selected route produced the supplied trace.
 
-For QUINTE, compatibility also requires complete dispatch evidence:
-
-- R1 dispatch ledger with Party A, Party B, Party C, Party D, and Party E complete.
-- R2 dispatch ledger with Party A, Party B, Party C, Party D, and Party E complete.
-- R3 dispatch ledger with Auditor B complete.
-
-If any required phase is missing, blocked, degraded, or structurally invalid,
-the Action Packet blocks. This prevents a residual trace from laundering an
-incomplete debate into protected-write evidence.
+For QUINTE, compatibility also requires a completed atomic product outcome. If
+that outcome is missing, blocked, degraded, or invalid, the Action Packet
+blocks. HIGHBALL does not look through the outcome to judge phase completion or
+retry behavior; those are QUINTE scheduler invariants. This prevents a residual
+trace from laundering an unsuccessful product invocation into protected-write
+evidence without creating a second scheduler.
 
 When multiple Action Packets accumulate for a route group, HIGHBALL can
 summarize their execution reliability with

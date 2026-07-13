@@ -147,7 +147,7 @@ archives, but broad enough to catch the live target file.
 Residual Closure does not:
 
 - create a new debate participant
-- replace QUINTE R3 or Auditor B
+- replace or inspect the QUINTE scheduler and verdict contract
 - choose MAGI or QUINTE routes
 - authorize `git push`
 - prove truth in philosophical or open-ended domains

@@ -18,8 +18,8 @@ preference, convenience, or historical tool identity.
 - `QUINTE`: use when the claim may affect public protocol, protected writes,
   irreversible action, architecture, legal/financial exposure, or high-risk
   unresolved residuals. Required artifacts: RASHOMON-compatible adversarial
-  residual trace with R3 closure ledger, plus complete R1/R2/R3 QUINTE
-  dispatch ledgers.
+  residual trace with closure ledger, plus a completed atomic QUINTE product
+  outcome.
 - `human-review`: use when machine routes reach their ceiling, evidence is unavailable, or a waiver/block decision is required. Required artifact: scoped human decision, waiver, block record, or explicit evidence.
 - `block`: use when authorization is missing, a protected action conflicts with open high-risk residuals, or no valid route can produce required evidence. Required artifact: block trace or guard output.
 
@@ -82,8 +82,9 @@ The output is advisory until enforced by the host runtime. BANNIN remains the
 protected-write guard, and KENGEN remains the authorization perimeter.
 When a concrete trace is available, the route decision should be bound into an
 Action Packet as specified in `specs/action-packet.md`. For QUINTE, that packet
-must also bind the complete phase dispatch ledgers so a trace cannot stand in
-for an incomplete debate.
+must also bind the completed product outcome so a trace cannot stand in for an
+unsuccessful invocation. HIGHBALL does not inspect QUINTE's internal phases,
+lanes, agents, or attempts.
 
 ## 6. Non-Goals
 
@@ -91,6 +92,7 @@ Residual routing does not:
 
 - dispatch agents
 - choose concrete CLI commands
+- inspect or retry QUINTE phases or lanes
 - certify model heterogeneity
 - close residuals
 - authorize push, deletion, credential mutation, deployment, or money movement

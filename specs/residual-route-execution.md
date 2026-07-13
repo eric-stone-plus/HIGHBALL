@@ -4,6 +4,11 @@
 > Packets depended on execution evidence. They do not dispatch agents,
 > authorize action, or modify routing policy.
 
+Implementation status: reports derived from legacy v1 Action Packets retain
+their historical per-phase fields for archive compatibility. Active policy
+consumes only atomic product-level outcomes and does not interpret QUINTE
+internal execution.
+
 ## 1. Purpose
 
 Action Packets decide one proposed action. A route execution report asks a
@@ -11,16 +16,16 @@ different question: across a packet cohort, did the selected route reliably
 produce the execution evidence it claimed to require?
 
 This matters most for QUINTE. A QUINTE trace may be structurally valid while
-one R1, R2, or R3 dispatch route silently failed, timed out, returned a startup
-banner, or exhausted same-route recovery. The Action Packet blocks that single
-action. The route execution report preserves the wider operational signal so a
-future route policy cannot ignore repeated dispatch instability.
+the atomic CLI invocation did not produce a completed product outcome. The
+Action Packet blocks that single action. The route execution report preserves
+the wider product-level signal so a future route policy cannot ignore repeated
+invocation instability.
 
 ## 2. Inputs
 
 `bin/build-route-execution-report.py` consumes validated Action Packets. It
-does not read raw dispatch ledgers directly for policy evidence. This keeps the
-scope tied to concrete boundary packets rather than isolated operational logs.
+does not read QUINTE phase, lane, agent, retry, or pacing records. This keeps
+the scope tied to atomic product outcomes at concrete boundaries.
 
 Each packet contributes:
 
@@ -76,8 +81,8 @@ execution report exactly.
 
 The chain is intentionally layered:
 
-- QUINTE dispatch ledgers record phase attempts.
-- HIGHBALL Action Packets decide one action from route, trace, quality, and execution evidence.
+- QUINTE owns and validates all internal execution state.
+- HIGHBALL Action Packets decide one action from route, trace, quality, and the atomic product outcome.
 - HIGHBALL route execution reports summarize Action Packet execution reliability.
 - HIGHBALL route policy reports may use that summary as a conservative route gate.
 
@@ -87,7 +92,7 @@ Route execution reports do not:
 
 - dispatch agents
 - authorize protected writes or irreversible operations
-- replace QUINTE dispatch ledgers
+- replace or interpret QUINTE internal execution records
 - replace Action Packets
 - prove truth
 - mutate route policy
