@@ -210,11 +210,12 @@ before BANNIN and KENGEN enforcement.
 
 `bin/build-action-packet.py` combines a route request, route decision, residual
 trace, validation result, quality metrics, and required execution evidence into
-one reviewable Action Packet for a proposed action. The current v1 packet
-builder, validator, and schema still encode the retired per-phase QUINTE ledger
-shape and are compatibility tools for archived packets only. An active
-integration binds the atomic QUINTE product outcome and does not revalidate
-phase, lane, agent, or retry details.
+one reviewable Action Packet for a proposed action. Active QUINTE integrations
+bind an atomic product outcome with `--quinte-result` (`result.json`); the
+builder and validator accept or block that product status only and do not
+revalidate phase, lane, agent, retry, or pacing details. Per-phase dispatch
+ledgers (`--dispatch-ledger`) remain available solely for archived packet
+compatibility.
 `schemas/action-packet.schema.json` defines the portable packet shape, and
 `bin/validate-action-packet.py` independently recomputes route, validation,
 quality, execution evidence, and boundary decision to catch malformed or

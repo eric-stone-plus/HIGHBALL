@@ -400,6 +400,8 @@
       "required": [
         "required",
         "status",
+        "binding",
+        "quinte_outcome",
         "required_phases",
         "dispatch_ledgers",
         "errors",
@@ -420,18 +422,39 @@
             "invalid"
           ]
         },
+        "binding": {
+          "type": "string",
+          "enum": [
+            "atomic_quinte_outcome",
+            "legacy_dispatch_ledgers",
+            "not_applicable"
+          ],
+          "description": "Active integrations use atomic_quinte_outcome. legacy_dispatch_ledgers is archived-packet compatibility only."
+        },
+        "quinte_outcome": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/quinteProductOutcome"
+            }
+          ]
+        },
         "required_phases": {
           "type": "array",
           "items": {
             "type": "string",
             "enum": ["R1", "R2", "R3"]
-          }
+          },
+          "description": "Empty for active atomic bindings. Populated only for archived legacy packets."
         },
         "dispatch_ledgers": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/dispatchLedgerSummary"
-          }
+          },
+          "description": "Empty for active atomic bindings. Populated only for archived legacy packets."
         },
         "errors": {
           "type": "array",
@@ -444,6 +467,34 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "quinteProductOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "result_ref",
+        "run_id",
+        "status",
+        "result_version"
+      ],
+      "properties": {
+        "result_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_id": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "result_version": {
+          "type": [
+            "string",
+            "null"
+          ]
         }
       }
     },
