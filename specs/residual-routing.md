@@ -14,7 +14,7 @@ preference, convenience, or historical tool identity.
 ## 2. Routes
 
 - `direct-evidence`: use when the claim is executable or source-verifiable and does not need adversarial interpretation first. Required artifact: file, command, runtime, source, or user evidence trace.
-- `MAGI`: use when the claim is reversible or low/medium risk and benefits from independent convergence/divergence review. Required artifact: RASHOMON-compatible convergence/divergence residual trace.
+- `MAGI`: optional instrument. Use when the claim is reversible or low/medium risk, the host has an installed MAGI entrypoint, and independent convergence/divergence review helps. Required artifact: RASHOMON-compatible convergence/divergence residual trace. If residual routing would select MAGI but the host has **zero** MAGI binding, the host must reroute to `human-review` or `block` — never invent a MAGI command or substitute a QUINTE party.
 - `QUINTE`: use when the claim may affect public protocol, protected writes,
   irreversible action, architecture, legal/financial exposure, or high-risk
   unresolved residuals. Required artifacts: RASHOMON-compatible adversarial
@@ -56,13 +56,29 @@ these inputs.
 6. If `change_class` is `protocol` or `architecture`, route `QUINTE`.
 7. If the claim is executable and boundary is `none` or `reversible`, route
    `direct-evidence`.
-8. If risk is `LOW` or `MEDIUM`, route `MAGI`.
+8. If risk is `LOW` or `MEDIUM`, route `MAGI` when the host has a MAGI
+   entrypoint; otherwise route `human-review` (or `direct-evidence` when the
+   claim is already executable).
 9. If risk is `HIGH`, `CRITICAL`, or `P0`, route `QUINTE`.
-10. Otherwise route `MAGI` for independent stability review.
+10. Otherwise route `MAGI` if bound, else `human-review`, for independent
+    stability review.
 
 `git push` remains separately gated by KENGEN. A route decision may say that
 QUINTE evidence is required before proposing a push, but it cannot authorize
 the push.
+
+## 4.1 Host business routing vs residual routing
+
+Hosts may also apply a lightweight **business** heuristic (for example SOUL
+task-shape rules that send discussion/judgment work to QUINTE and
+system/config work to codex). That heuristic does not replace residual
+routing when an action crosses `protected_write`, `irreversible`, protocol, or
+architecture boundaries.
+
+Both channels that select QUINTE must converge on the same atomic product
+boundary: Brief → `quinte run` → Primary Arbiter / hm handshake →
+`completed` + `result.json`. Residual-governed QUINTE actions additionally
+require an Action Packet that binds that product outcome.
 
 ## 5. Output
 

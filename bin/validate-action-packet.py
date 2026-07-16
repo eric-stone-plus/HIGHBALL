@@ -84,10 +84,19 @@ QUALITY_FIELDS = {
 EXECUTION_EVIDENCE_FIELDS = {
     "required",
     "status",
+    "binding",
+    "quinte_outcome",
     "required_phases",
     "dispatch_ledgers",
     "errors",
     "warnings",
+}
+BINDINGS = {"atomic_quinte_outcome", "legacy_dispatch_ledgers", "not_applicable"}
+QUINTE_OUTCOME_FIELDS = {
+    "result_ref",
+    "run_id",
+    "status",
+    "result_version",
 }
 DISPATCH_LEDGER_SUMMARY_FIELDS = {
     "ledger_ref",
@@ -220,16 +229,26 @@ def decide(
 
     execution_status = execution_evidence.get("status")
     if execution_evidence.get("required") and execution_status != "complete":
-        block(
-            f"required QUINTE dispatch evidence is {execution_status}",
-            "attach complete R1, R2, and R3 QUINTE dispatch ledgers",
-        )
+        binding = execution_evidence.get("binding")
+        if binding == "atomic_quinte_outcome":
+            block(
+                f"required atomic QUINTE product outcome is {execution_status}",
+                "attach a completed quinte result.json product outcome",
+            )
+        else:
+            block(
+                f"required QUINTE execution evidence is {execution_status}",
+                "attach a completed atomic quinte result.json (legacy phase ledgers are archived-only)",
+            )
     elif execution_status == "invalid":
-        block("dispatch evidence is invalid", "repair or regenerate dispatch ledgers")
+        block(
+            "QUINTE execution evidence is invalid",
+            "repair or regenerate the atomic quinte product outcome",
+        )
     elif execution_status in {"blocked", "degraded"}:
         block(
-            f"dispatch evidence is {execution_status}",
-            "recover the same route and rerun the blocked QUINTE phase",
+            f"QUINTE product outcome is {execution_status}",
+            "recover with the quinte CLI and rebind the product outcome (do not reconstruct R1/R2/R3 in HIGHBALL)",
         )
 
     quality_gate = quality.get("quality_gate")
@@ -355,6 +374,31 @@ def validate_shape(packet: Any) -> list[str]:
             errors.append("execution_evidence.required must be boolean")
         if execution.get("status") not in EXECUTION_STATUSES:
             errors.append("execution_evidence.status is invalid")
+        if execution.get("binding") not in BINDINGS:
+            errors.append("execution_evidence.binding is invalid")
+        outcome = execution.get("quinte_outcome")
+        if outcome is not None:
+            if not isinstance(outcome, dict):
+                errors.append("execution_evidence.quinte_outcome must be an object or null")
+            else:
+                unknown_outcome = sorted(set(outcome) - QUINTE_OUTCOME_FIELDS)
+                missing_outcome = sorted(QUINTE_OUTCOME_FIELDS - set(outcome))
+                if unknown_outcome:
+                    errors.append(
+                        f"execution_evidence.quinte_outcome unknown fields: {', '.join(unknown_outcome)}"
+                    )
+                if missing_outcome:
+                    errors.append(
+                        f"execution_evidence.quinte_outcome missing fields: {', '.join(missing_outcome)}"
+                    )
+                if not isinstance(outcome.get("result_ref"), str) or not outcome.get("result_ref", "").strip():
+                    errors.append("execution_evidence.quinte_outcome.result_ref must be a non-empty string")
+                if not isinstance(outcome.get("run_id"), str):
+                    errors.append("execution_evidence.quinte_outcome.run_id must be a string")
+                if not isinstance(outcome.get("status"), str):
+                    errors.append("execution_evidence.quinte_outcome.status must be a string")
+                if outcome.get("result_version") is not None and not isinstance(outcome.get("result_version"), str):
+                    errors.append("execution_evidence.quinte_outcome.result_version must be a string or null")
         if not is_string_list(execution.get("required_phases")):
             errors.append("execution_evidence.required_phases must be an array of strings")
         elif any(phase not in QUINTE_PHASES for phase in execution.get("required_phases", [])):
@@ -363,6 +407,7 @@ def validate_shape(packet: Any) -> list[str]:
             errors.append("execution_evidence.errors must be an array of strings")
         if not is_string_list(execution.get("warnings")):
             errors.append("execution_evidence.warnings must be an array of strings")
+        # Legacy ledgers: optional archived shape only.
         ledgers = execution.get("dispatch_ledgers")
         if not isinstance(ledgers, list):
             errors.append("execution_evidence.dispatch_ledgers must be an array")
@@ -425,14 +470,24 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
     if quality != expected_quality:
         errors.append("quality does not match derived residual trace metrics")
 
+    outcome = execution_evidence.get("quinte_outcome")
+    result_refs = []
+    if isinstance(outcome, dict) and isinstance(outcome.get("result_ref"), str):
+        result_refs = [outcome["result_ref"]]
     ledger_refs = [
         ledger["ledger_ref"]
         for ledger in execution_evidence.get("dispatch_ledgers", [])
         if isinstance(ledger, dict) and isinstance(ledger.get("ledger_ref"), str)
     ]
-    expected_execution = PACKET_BUILDER.build_execution_evidence(route_decision, trace, ledger_refs, base_dir=base_dir)
+    expected_execution = PACKET_BUILDER.build_execution_evidence(
+        route_decision,
+        trace,
+        ledger_refs,
+        quinte_result_refs=result_refs,
+        base_dir=base_dir,
+    )
     if execution_evidence != expected_execution:
-        errors.append("execution_evidence does not match derived dispatch evidence")
+        errors.append("execution_evidence does not match derived product/dispatch evidence")
 
     action_decision, decision_reasons, required_next_steps = decide(
         request,

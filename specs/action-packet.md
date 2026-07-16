@@ -40,13 +40,19 @@ reuse a verdict, route decision, or metric outside its original scope.
 `specs/residual-quality-metrics.md`, including trial-manifest metrics when the
 trace declares perturbation conditions.
 `execution_evidence` records whether the selected route requires product-level
-execution proof. When QUINTE is selected, it binds the atomic CLI outcome. The
-packet does not summarize or validate QUINTE's internal phase, lane, agent,
-retry, pacing, or artifact state.
+execution proof. When QUINTE is selected, the **active** binding is an atomic
+CLI product outcome (`result.json`) via `binding: atomic_quinte_outcome` and
+`quinte_outcome`. The packet does not summarize or validate QUINTE's internal
+phase, lane, agent, retry, pacing, or artifact state, and must not reconstruct
+R1/R2/R3 scheduling.
 
-`schemas/action-packet.schema.json` and `bin/validate-action-packet.py` are the
-legacy v1 compatibility implementation. They are not an active QUINTE control
-surface.
+Legacy per-phase `required_phases` / `dispatch_ledgers` fields remain only for
+archived packet compatibility (`binding: legacy_dispatch_ledgers`). Active
+builders accept `--quinte-result`; `--dispatch-ledger` is archived-only.
+
+`schemas/action-packet.schema.json`, `bin/build-action-packet.py`, and
+`bin/validate-action-packet.py` implement the active atomic binding and keep
+legacy ledger parsing for archived packets.
 
 ## 3. Decision Rule
 
