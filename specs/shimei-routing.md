@@ -64,6 +64,15 @@ SHIMEI permission to reach inside QUINTE or substitute an internal QUINTE
 route. A failed QUINTE product invocation remains a failed QUINTE product
 invocation until QUINTE reports a product-level outcome.
 
+MAGI is optional. A host may have zero MAGI entrypoint. When residual routing
+selects MAGI without a verified entrypoint, SHIMEI must fail closed into
+`human-review` or `block` rather than inventing commands or borrowing QUINTE
+lanes.
+
+Process cleanup for QUINTE workers remains inside the `quinte` product
+boundary. SHIMEI, KENGEN, and BANNIN must not scan for or kill QUINTE-owned
+child processes by agent name.
+
 ## Distribution
 
 SHIMEI is authored in HIGHBALL and mirrored into the current
