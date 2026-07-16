@@ -4,10 +4,8 @@
 > Packets depended on execution evidence. They do not dispatch agents,
 > authorize action, or modify routing policy.
 
-Implementation status: reports derived from legacy v1 Action Packets retain
-their historical per-phase fields for archive compatibility. Active policy
-consumes only atomic product-level outcomes and does not interpret QUINTE
-internal execution.
+Active reports consume only Action Packet `1.1` atomic product outcomes. Legacy
+phase ledgers are archive evidence and are not accepted as active execution.
 
 ## 1. Purpose
 
@@ -35,8 +33,8 @@ Each packet contributes:
 - whether execution evidence was required
 - execution status: `not_required`, `missing`, `complete`, `blocked`,
   `degraded`, or `invalid`
-- complete phase count and missing phases
-- execution errors and warnings copied from the packet
+- bound QUINTE run ID, result digest, and action-binding digest when present
+- execution errors copied from the packet
 
 The builder rejects mixed route groups unless a target route group is supplied.
 The validator is `bin/validate-route-execution-report.py`; the schema is

@@ -21,6 +21,7 @@ def load_module(name: str, path: Path) -> Any:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACTS = load_module("highball_contracts", ROOT / "bin" / "highball-contracts.py")
 POLICY_VALIDATOR = load_module("validate_route_policy_report", ROOT / "bin" / "validate-route-policy-report.py")
 BASELINE_VALIDATOR = load_module("validate_route_baseline_report", ROOT / "bin" / "validate-route-baseline-report.py")
 BASELINE_BUILDER = load_module("build_route_baseline_report", ROOT / "bin" / "build-route-baseline-report.py")
@@ -541,7 +542,7 @@ def validate_chain(path: Path) -> list[str]:
         return validate_baseline_chain(path)
     if artifact.get("pairing_report_version") == "1.0":
         return validate_pairing_chain(path)
-    if artifact.get("execution_report_version") == "1.0":
+    if artifact.get("execution_report_version") == CONTRACTS.ROUTE_EXECUTION_REPORT_VERSION:
         return validate_execution_chain(path)
     if artifact.get("review_version") == "1.0":
         return validate_experiment_review_chain(path)

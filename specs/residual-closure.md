@@ -58,7 +58,8 @@ ledger entry for each `HIGH`, `CRITICAL`, `P0`, or action-blocking residual:
 
 ```json
 {
-  "trace_version": "1.0",
+  "trace_version": "1.1",
+  "action_binding_sha256": "sha256:...",
   "question": "string",
   "instrument": "QUINTE",
   "residuals": [{
@@ -121,13 +122,8 @@ or scope, when a waiver lacks explicit user or human authorization, or when
 `highball_decision: pass` conflicts with an open or unsupported high-risk
 residual.
 
-If a verdict predates the ledger format, BANNIN should downgrade to the current
-verdict-trail check but emit a warning that the verdict has no residual closure
-ledger and closure cannot be verified.
-
-The warning path is transitional. New protocol-changing protected writes should
-produce a ledger so BANNIN can enforce closure rather than merely confirm that a
-verdict file exists.
+If a verdict predates the ledger format, it remains archive evidence but cannot
+authorize a current protected write. Missing or unverifiable closure blocks.
 
 ## 6. Error Signatures
 

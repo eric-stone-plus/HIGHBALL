@@ -28,6 +28,17 @@ TRACE_GATES = {"unknown", "pass", "review", "block"}
 HUMAN_REVIEW_CLASSES = {"credential", "deletion", "deployment", "financial", "legal"}
 QUINTE_CLASSES = {"protocol", "architecture"}
 HIGH_RISKS = {"HIGH", "CRITICAL", "P0"}
+REQUEST_FIELDS = {
+    "question",
+    "action_boundary",
+    "change_class",
+    "affected_paths",
+    "action_scope",
+    "risk",
+    "executable",
+    "trace_quality_gate",
+    "open_high_risk_count",
+}
 
 
 def as_bool(value: Any) -> bool:
@@ -42,6 +53,9 @@ def as_int(value: Any) -> int:
 
 def validate_request(request: dict[str, Any]) -> list[str]:
     errors: list[str] = []
+    unknown = sorted(set(request) - REQUEST_FIELDS)
+    if unknown:
+        errors.append(f"route request has unknown fields: {', '.join(unknown)}")
     if not isinstance(request.get("question"), str) or not request["question"].strip():
         errors.append("question must be a non-empty string")
     if request.get("action_boundary") not in ACTION_BOUNDARIES:
@@ -50,6 +64,11 @@ def validate_request(request: dict[str, Any]) -> list[str]:
         errors.append("change_class is invalid")
     if not isinstance(request.get("affected_paths"), list) or not all(isinstance(item, str) for item in request["affected_paths"]):
         errors.append("affected_paths must be an array of strings")
+    if "action_scope" not in request or (
+        request.get("action_scope") is not None
+        and not isinstance(request.get("action_scope"), str)
+    ):
+        errors.append("action_scope must be a string or null")
     if "executable" in request and not isinstance(request.get("executable"), bool):
         errors.append("executable must be boolean when present")
     if request.get("risk") not in RISKS:
@@ -58,8 +77,6 @@ def validate_request(request: dict[str, Any]) -> list[str]:
         errors.append("trace_quality_gate is invalid")
     if "open_high_risk_count" in request and not isinstance(request.get("open_high_risk_count"), int):
         errors.append("open_high_risk_count must be integer when present")
-    if "user_authorized_push" in request and not isinstance(request.get("user_authorized_push"), bool):
-        errors.append("user_authorized_push must be boolean when present")
     return errors
 
 
@@ -121,6 +138,14 @@ def route_request(request: dict[str, Any]) -> dict[str, Any]:
         route = "MAGI"
         reasons.append("default independent stability review")
         required_artifacts.append("MAGI residual trace")
+
+    if route == "QUINTE" and not (
+        isinstance(request.get("action_scope"), str)
+        and request["action_scope"].strip()
+    ):
+        route = "block"
+        reasons.append("QUINTE execution requires a non-empty action scope")
+        required_artifacts.append("explicit action scope bound into the QUINTE brief and result")
 
     if change_class in {"deletion", "deployment", "credential", "financial", "legal"}:
         kengen_authorization_required = True

@@ -12,6 +12,7 @@
     "validation",
     "quality",
     "execution_evidence",
+    "authorization",
     "action_decision",
     "decision_reasons",
     "required_next_steps"
@@ -19,7 +20,7 @@
   "properties": {
     "packet_version": {
       "type": "string",
-      "const": "1.0"
+      "const": "1.1"
     },
     "route_request": {
       "$ref": "#/$defs/routeRequest"
@@ -61,6 +62,9 @@
         "type": "string",
         "minLength": 1
       }
+    },
+    "authorization": {
+      "$ref": "#/$defs/authorization"
     }
   },
   "$defs": {
@@ -71,7 +75,8 @@
         "action_boundary",
         "change_class",
         "affected_paths",
-        "risk"
+        "risk",
+        "action_scope"
       ],
       "properties": {
         "question": {
@@ -134,11 +139,15 @@
           "type": "integer",
           "minimum": 0
         },
-        "user_authorized_push": {
-          "type": "boolean"
+        "action_scope": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2000
         }
       },
-      "additionalProperties": true
+      "additionalProperties": false
     },
     "routeDecision": {
       "type": "object",
@@ -402,10 +411,7 @@
         "status",
         "binding",
         "quinte_outcome",
-        "required_phases",
-        "dispatch_ledgers",
-        "errors",
-        "warnings"
+        "errors"
       ],
       "properties": {
         "required": {
@@ -426,10 +432,9 @@
           "type": "string",
           "enum": [
             "atomic_quinte_outcome",
-            "legacy_dispatch_ledgers",
             "not_applicable"
           ],
-          "description": "Active integrations use atomic_quinte_outcome. legacy_dispatch_ledgers is archived-packet compatibility only."
+          "description": "Active QUINTE product binding or a route with no QUINTE product."
         },
         "quinte_outcome": {
           "oneOf": [
@@ -441,28 +446,7 @@
             }
           ]
         },
-        "required_phases": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["R1", "R2", "R3"]
-          },
-          "description": "Empty for active atomic bindings. Populated only for archived legacy packets."
-        },
-        "dispatch_ledgers": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/dispatchLedgerSummary"
-          },
-          "description": "Empty for active atomic bindings. Populated only for archived legacy packets."
-        },
         "errors": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "warnings": {
           "type": "array",
           "items": {
             "type": "string"
@@ -477,7 +461,13 @@
         "result_ref",
         "run_id",
         "status",
-        "result_version"
+        "result_version",
+        "result_sha256",
+        "brief_sha256",
+        "question",
+        "action_scope",
+        "affected_paths",
+        "action_binding_sha256"
       ],
       "properties": {
         "result_ref": {
@@ -485,75 +475,42 @@
           "minLength": 1
         },
         "run_id": {
-          "type": "string"
+          "type": "string",
+          "format": "uuid"
         },
         "status": {
-          "type": "string"
+          "const": "completed"
         },
         "result_version": {
+          "const": "2.0"
+        },
+        "result_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "brief_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_scope": {
           "type": [
             "string",
             "null"
           ]
-        }
-      }
-    },
-    "dispatchLedgerSummary": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "ledger_ref",
-        "phase",
-        "status",
-        "phase_progression_allowed",
-        "required_count",
-        "succeeded_count",
-        "failed_count",
-        "party_ids",
-        "blocking_failures"
-      ],
-      "properties": {
-        "ledger_ref": {
-          "type": "string",
-          "minLength": 1
         },
-        "phase": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "enum": ["R1", "R2", "R3", null]
-        },
-        "status": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "enum": ["complete", "blocked", "degraded", null]
-        },
-        "phase_progression_allowed": {
-          "type": "boolean"
-        },
-        "required_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "succeeded_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "failed_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "party_ids": {
+        "affected_paths": {
           "type": "array",
           "items": {
             "type": "string"
           }
         },
-        "blocking_failures": {
-          "type": "array"
+        "action_binding_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
         }
       }
     },
@@ -561,15 +518,17 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
+        "trace_version",
         "question",
         "instrument",
         "residuals",
         "action_boundary",
-        "highball_decision"
+        "highball_decision",
+        "action_binding_sha256"
       ],
       "properties": {
         "trace_version": {
-          "type": "string"
+          "const": "1.1"
         },
         "question": {
           "type": "string",
@@ -611,6 +570,10 @@
         },
         "trial_manifest": {
           "$ref": "#/$defs/trialManifest"
+        },
+        "action_binding_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
         }
       }
     },
@@ -877,6 +840,87 @@
         },
         "scope": {
           "type": "string"
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "status",
+        "artifact_ref",
+        "artifact_sha256",
+        "authorization_id",
+        "action_binding_sha256",
+        "action_scope",
+        "issued_at",
+        "expires_at",
+        "errors"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "not_required",
+            "missing",
+            "authorized",
+            "invalid"
+          ]
+        },
+        "artifact_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "authorization_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "action_binding_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "action_scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issued_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     }

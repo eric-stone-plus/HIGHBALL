@@ -27,7 +27,7 @@
   "properties": {
     "execution_report_version": {
       "type": "string",
-      "const": "1.0"
+      "const": "1.1"
     },
     "route_group": {
       "type": "string",
@@ -142,11 +142,10 @@
         "action_decision",
         "execution_required",
         "execution_status",
-        "dispatch_ledger_count",
-        "complete_phase_count",
-        "missing_phases",
-        "errors",
-        "warnings"
+        "quinte_run_id",
+        "quinte_result_sha256",
+        "action_binding_sha256",
+        "errors"
       ],
       "properties": {
         "packet_ref": {
@@ -187,28 +186,10 @@
             "invalid"
           ]
         },
-        "dispatch_ledger_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "complete_phase_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "missing_phases": {
-          "type": "array",
-          "items": {
-            "type": "string",
-            "enum": ["R1", "R2", "R3"]
-          }
-        },
+        "quinte_run_id": { "type": ["string", "null"], "minLength": 1 },
+        "quinte_result_sha256": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+        "action_binding_sha256": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
         "errors": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "warnings": {
           "type": "array",
           "items": {
             "type": "string"

@@ -27,10 +27,11 @@ def load_module(name: str, path: Path) -> Any:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTRACTS = load_module("highball_contracts", ROOT / "bin" / "highball-contracts.py")
 ROUTER = load_module("route_residual_action", ROOT / "bin" / "route-residual-action.py")
 TRACE_VALIDATOR = load_module("validate_residual_trace", ROOT / "bin" / "validate-residual-trace.py")
 MEASURE = load_module("measure_residual_trace", ROOT / "bin" / "measure-residual-trace.py")
-PACKET_BUILDER = load_module("build_action_packet", ROOT / "bin" / "build-action-packet.py")
+PRODUCT = load_module("verify_quinte_product", ROOT / "bin" / "verify-quinte-product.py")
 
 
 TOP_LEVEL_FIELDS = {
@@ -41,6 +42,7 @@ TOP_LEVEL_FIELDS = {
     "validation",
     "quality",
     "execution_evidence",
+    "authorization",
     "action_decision",
     "decision_reasons",
     "required_next_steps",
@@ -86,42 +88,37 @@ EXECUTION_EVIDENCE_FIELDS = {
     "status",
     "binding",
     "quinte_outcome",
-    "required_phases",
-    "dispatch_ledgers",
     "errors",
-    "warnings",
 }
-BINDINGS = {"atomic_quinte_outcome", "legacy_dispatch_ledgers", "not_applicable"}
+AUTHORIZATION_FIELDS = {
+    "required",
+    "status",
+    "artifact_ref",
+    "artifact_sha256",
+    "authorization_id",
+    "action_binding_sha256",
+    "action_scope",
+    "issued_at",
+    "expires_at",
+    "errors",
+}
+BINDINGS = {"atomic_quinte_outcome", "not_applicable"}
 QUINTE_OUTCOME_FIELDS = {
     "result_ref",
     "run_id",
     "status",
     "result_version",
-}
-DISPATCH_LEDGER_SUMMARY_FIELDS = {
-    "ledger_ref",
-    "phase",
-    "status",
-    "phase_progression_allowed",
-    "required_count",
-    "succeeded_count",
-    "failed_count",
-    "party_ids",
-    "blocking_failures",
+    "result_sha256",
+    "brief_sha256",
+    "question",
+    "action_scope",
+    "affected_paths",
+    "action_binding_sha256",
 }
 ROUTES = {"direct-evidence", "MAGI", "QUINTE", "human-review", "block"}
 DECISIONS = {"pass", "review", "block"}
 VALIDATION_STATUSES = {"valid", "blocked", "invalid"}
 EXECUTION_STATUSES = {"not_required", "missing", "complete", "blocked", "degraded", "invalid"}
-QUINTE_PHASES = ["R1", "R2", "R3"]
-ROUTE_INSTRUMENT = {
-    "direct-evidence": "direct-evidence",
-    "MAGI": "MAGI",
-    "QUINTE": "QUINTE",
-    "human-review": "human",
-}
-
-
 def extract_json_blocks(text: str) -> list[tuple[int, str]]:
     pattern = re.compile(r"^```json[ \t]*\n(.*?)^```[ \t]*$", re.MULTILINE | re.DOTALL)
     return [(index + 1, match.group(1)) for index, match in enumerate(pattern.finditer(text))]
@@ -162,7 +159,7 @@ def load_packet(path: Path) -> dict[str, Any]:
             label = "raw JSON" if raw_json_mode else f"JSON block {block_number}"
             errors.append(f"{label} is invalid JSON: {exc.msg}")
             continue
-        if isinstance(parsed, dict) and parsed.get("packet_version") == "1.0":
+        if isinstance(parsed, dict) and parsed.get("packet_version") == CONTRACTS.ACTION_PACKET_VERSION:
             packets.append(parsed)
 
     if len(packets) != 1:
@@ -195,16 +192,11 @@ def decide(
     validation: dict[str, Any],
     quality: dict[str, Any],
     execution_evidence: dict[str, Any],
+    authorization: dict[str, Any],
 ) -> tuple[str, list[str], list[str]]:
     decision = "pass"
     reasons: list[str] = []
     next_steps: list[str] = []
-
-    route = route_decision["route"]
-    trace_instrument = trace.get("instrument")
-    expected_instrument = ROUTE_INSTRUMENT.get(route)
-    request_boundary = request.get("action_boundary")
-    trace_boundary = trace.get("action_boundary")
 
     def block(reason: str, step: str) -> None:
         nonlocal decision
@@ -219,62 +211,58 @@ def decide(
         reasons.append(reason)
         next_steps.append(step)
 
+    route = route_decision["route"]
     if validation["status"] == "invalid":
         block("trace has structural validation errors", "produce a schema-compatible residual trace")
     elif validation["status"] == "blocked":
-        block("trace contains validator block findings", "close, block, waive, or scope high-risk residuals")
-
+        block("trace contains validator block findings", "resolve the trace's blocking decision or residuals")
     if route == "block":
-        block("route decision is block", "record block or provide corrected evidence")
-
-    execution_status = execution_evidence.get("status")
-    if execution_evidence.get("required") and execution_status != "complete":
-        binding = execution_evidence.get("binding")
-        if binding == "atomic_quinte_outcome":
-            block(
-                f"required atomic QUINTE product outcome is {execution_status}",
-                "attach a completed quinte result.json product outcome",
-            )
-        else:
-            block(
-                f"required QUINTE execution evidence is {execution_status}",
-                "attach a completed atomic quinte result.json (legacy phase ledgers are archived-only)",
-            )
-    elif execution_status == "invalid":
+        block("route decision is block", "record the block or provide corrected evidence")
+    status = execution_evidence.get("status")
+    if execution_evidence.get("required") and status != "complete":
         block(
-            "QUINTE execution evidence is invalid",
-            "repair or regenerate the atomic quinte product outcome",
+            f"required atomic QUINTE product outcome is {status}",
+            "attach a current, completed, request-bound QUINTE result.json",
         )
-    elif execution_status in {"blocked", "degraded"}:
+    elif status in {"invalid", "blocked", "degraded"}:
+        block(f"QUINTE product outcome is {status}", "repair or regenerate the bound QUINTE product outcome")
+    if trace.get("highball_decision") in {"block", "escalate"}:
         block(
-            f"QUINTE product outcome is {execution_status}",
-            "recover with the quinte CLI and rebind the product outcome (do not reconstruct R1/R2/R3 in HIGHBALL)",
+            f"trace highball_decision is {trace.get('highball_decision')}",
+            "resolve the upstream block or escalation before action",
         )
-
-    quality_gate = quality.get("quality_gate")
-    if quality_gate == "block":
+    if quality.get("quality_gate") == "block":
         block("quality gate is block", "resolve open or unsupported action-blocking residuals")
-    elif quality_gate == "review":
+    elif quality.get("quality_gate") == "review":
         review("quality gate is review", "add evidence, closure evidence, scope, or human review")
-
-    if expected_instrument is not None and trace_instrument != expected_instrument:
-        review(
-            f"route {route} expects trace instrument {expected_instrument}, got {trace_instrument}",
+    expected_instrument = {
+        "direct-evidence": "direct-evidence",
+        "MAGI": "MAGI",
+        "QUINTE": "QUINTE",
+        "human-review": "human",
+    }.get(route)
+    if expected_instrument is not None and trace.get("instrument") != expected_instrument:
+        block(
+            f"route {route} expects trace instrument {expected_instrument}, got {trace.get('instrument')}",
             "produce a trace from the selected route or reroute the action",
         )
-
-    if request_boundary != trace_boundary:
-        review(
-            f"route request boundary {request_boundary} differs from trace boundary {trace_boundary}",
-            "produce a trace scoped to the requested action boundary or reroute the action",
+    if request.get("question") != trace.get("question"):
+        block("route request question differs from trace question", "produce a trace bound to this question")
+    if request.get("action_boundary") != trace.get("action_boundary"):
+        block("route request boundary differs from trace boundary", "produce a trace scoped to the requested action boundary")
+    if trace.get("trace_version") != CONTRACTS.RESIDUAL_TRACE_VERSION:
+        block("trace contract version is not active", "produce an active residual trace contract")
+    if trace.get("action_binding_sha256") != CONTRACTS.action_binding_sha256(request):
+        block("trace action binding differs from the route request", "bind the trace to this action")
+    if route_decision.get("kengen_authorization_required") and authorization.get("status") != "authorized":
+        block(
+            f"required KENGEN authorization is {authorization.get('status')}",
+            "attach a current, user-issued, action-bound KENGEN authorization artifact",
         )
-
-    if route_decision.get("kengen_authorization_required") and not request.get("user_authorized_push", False):
-        review("KENGEN authorization is required but not present", "obtain explicit current-session authorization")
-
+    elif authorization.get("status") == "invalid":
+        block("KENGEN authorization is invalid", "replace the invalid authorization artifact")
     if not reasons:
-        reasons.append("route, trace validation, and quality gate are consistent")
-
+        reasons.append("route, trace, execution evidence, and authorization are consistent")
     return decision, reasons, next_steps
 
 
@@ -290,8 +278,8 @@ def validate_shape(packet: Any) -> list[str]:
     if missing:
         errors.append(f"missing top-level fields: {', '.join(missing)}")
 
-    if packet.get("packet_version") != "1.0":
-        errors.append("packet_version must be 1.0")
+    if packet.get("packet_version") != CONTRACTS.ACTION_PACKET_VERSION:
+        errors.append(f"packet_version must be {CONTRACTS.ACTION_PACKET_VERSION}")
 
     request = packet.get("route_request")
     if not isinstance(request, dict):
@@ -397,47 +385,39 @@ def validate_shape(packet: Any) -> list[str]:
                     errors.append("execution_evidence.quinte_outcome.run_id must be a string")
                 if not isinstance(outcome.get("status"), str):
                     errors.append("execution_evidence.quinte_outcome.status must be a string")
-                if outcome.get("result_version") is not None and not isinstance(outcome.get("result_version"), str):
-                    errors.append("execution_evidence.quinte_outcome.result_version must be a string or null")
-        if not is_string_list(execution.get("required_phases")):
-            errors.append("execution_evidence.required_phases must be an array of strings")
-        elif any(phase not in QUINTE_PHASES for phase in execution.get("required_phases", [])):
-            errors.append("execution_evidence.required_phases contains an invalid phase")
+                if outcome.get("result_version") != CONTRACTS.QUINTE_RESULT_VERSION:
+                    errors.append("execution_evidence.quinte_outcome.result_version is unsupported")
+                for field in ("result_sha256", "brief_sha256", "action_binding_sha256"):
+                    if not CONTRACTS.is_digest(outcome.get(field)):
+                        errors.append(f"execution_evidence.quinte_outcome.{field} is invalid")
+                if not isinstance(outcome.get("question"), str) or not outcome.get("question", "").strip():
+                    errors.append("execution_evidence.quinte_outcome.question must be a non-empty string")
+                if outcome.get("action_scope") is not None and not isinstance(outcome.get("action_scope"), str):
+                    errors.append("execution_evidence.quinte_outcome.action_scope must be a string or null")
+                if not is_string_list(outcome.get("affected_paths")):
+                    errors.append("execution_evidence.quinte_outcome.affected_paths must be an array of strings")
         if not is_string_list(execution.get("errors")):
             errors.append("execution_evidence.errors must be an array of strings")
-        if not is_string_list(execution.get("warnings")):
-            errors.append("execution_evidence.warnings must be an array of strings")
-        # Legacy ledgers: optional archived shape only.
-        ledgers = execution.get("dispatch_ledgers")
-        if not isinstance(ledgers, list):
-            errors.append("execution_evidence.dispatch_ledgers must be an array")
-        else:
-            for index, ledger in enumerate(ledgers, start=1):
-                prefix = f"execution_evidence.dispatch_ledgers[{index}]"
-                if not isinstance(ledger, dict):
-                    errors.append(f"{prefix} must be an object")
-                    continue
-                unknown_ledger = sorted(set(ledger) - DISPATCH_LEDGER_SUMMARY_FIELDS)
-                missing_ledger = sorted(DISPATCH_LEDGER_SUMMARY_FIELDS - set(ledger))
-                if unknown_ledger:
-                    errors.append(f"{prefix} unknown fields: {', '.join(unknown_ledger)}")
-                if missing_ledger:
-                    errors.append(f"{prefix} missing fields: {', '.join(missing_ledger)}")
-                if not isinstance(ledger.get("ledger_ref"), str) or not ledger.get("ledger_ref", "").strip():
-                    errors.append(f"{prefix}.ledger_ref must be a non-empty string")
-                if ledger.get("phase") is not None and ledger.get("phase") not in QUINTE_PHASES:
-                    errors.append(f"{prefix}.phase is invalid")
-                if ledger.get("status") not in {"complete", "blocked", "degraded", None}:
-                    errors.append(f"{prefix}.status is invalid")
-                if not isinstance(ledger.get("phase_progression_allowed"), bool):
-                    errors.append(f"{prefix}.phase_progression_allowed must be boolean")
-                for field in ("required_count", "succeeded_count", "failed_count"):
-                    if not isinstance(ledger.get(field), int) or ledger.get(field) < 0:
-                        errors.append(f"{prefix}.{field} must be a non-negative integer")
-                if not is_string_list(ledger.get("party_ids")):
-                    errors.append(f"{prefix}.party_ids must be an array of strings")
-                if not isinstance(ledger.get("blocking_failures"), list):
-                    errors.append(f"{prefix}.blocking_failures must be an array")
+
+    authorization = packet.get("authorization")
+    if not isinstance(authorization, dict):
+        errors.append("authorization must be an object")
+    else:
+        unknown_authorization = sorted(set(authorization) - AUTHORIZATION_FIELDS)
+        missing_authorization = sorted(AUTHORIZATION_FIELDS - set(authorization))
+        if unknown_authorization:
+            errors.append(f"authorization unknown fields: {', '.join(unknown_authorization)}")
+        if missing_authorization:
+            errors.append(f"authorization missing fields: {', '.join(missing_authorization)}")
+        if not isinstance(authorization.get("required"), bool):
+            errors.append("authorization.required must be boolean")
+        if authorization.get("status") not in {"not_required", "missing", "authorized", "invalid"}:
+            errors.append("authorization.status is invalid")
+        for field in ("artifact_ref", "artifact_sha256", "authorization_id", "action_binding_sha256", "action_scope", "issued_at", "expires_at"):
+            if authorization.get(field) is not None and not isinstance(authorization.get(field), str):
+                errors.append(f"authorization.{field} must be a string or null")
+        if not is_string_list(authorization.get("errors")):
+            errors.append("authorization.errors must be an array of strings")
 
     if packet.get("action_decision") not in DECISIONS:
         errors.append("action_decision is invalid")
@@ -457,6 +437,7 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
     validation = packet["validation"]
     quality = packet["quality"]
     execution_evidence = packet["execution_evidence"]
+    authorization = packet["authorization"]
 
     expected_route = ROUTER.route_request(request)
     if route_decision != expected_route:
@@ -474,20 +455,24 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
     result_refs = []
     if isinstance(outcome, dict) and isinstance(outcome.get("result_ref"), str):
         result_refs = [outcome["result_ref"]]
-    ledger_refs = [
-        ledger["ledger_ref"]
-        for ledger in execution_evidence.get("dispatch_ledgers", [])
-        if isinstance(ledger, dict) and isinstance(ledger.get("ledger_ref"), str)
-    ]
-    expected_execution = PACKET_BUILDER.build_execution_evidence(
+    expected_execution = PRODUCT.build_execution_evidence(
+        request,
         route_decision,
-        trace,
-        ledger_refs,
-        quinte_result_refs=result_refs,
+        result_refs,
         base_dir=base_dir,
     )
     if execution_evidence != expected_execution:
         errors.append("execution_evidence does not match derived product/dispatch evidence")
+
+    authorization_ref = authorization.get("artifact_ref")
+    expected_authorization = CONTRACTS.summarize_kengen_artifact(
+        authorization_ref if isinstance(authorization_ref, str) else None,
+        request,
+        base_dir=base_dir,
+        required=route_decision.get("kengen_authorization_required", False),
+    )
+    if authorization != expected_authorization:
+        errors.append("authorization does not match the bound KENGEN artifact")
 
     action_decision, decision_reasons, required_next_steps = decide(
         request,
@@ -496,6 +481,7 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
         validation,
         quality,
         execution_evidence,
+        authorization,
     )
     if packet["action_decision"] != action_decision:
         errors.append("action_decision does not match derived packet decision")
@@ -531,8 +517,11 @@ def main() -> int:
             print(f"[HIGHBALL] ERROR: {error}", file=sys.stderr)
         return 2
 
-    if packet["action_decision"] == "block":
-        print("[HIGHBALL] Action Packet valid; action decision is block", file=sys.stderr)
+    if packet["action_decision"] != "pass":
+        print(
+            f"[HIGHBALL] Action Packet valid; action decision is {packet['action_decision']} (non-authorizing)",
+            file=sys.stderr,
+        )
         return 1
 
     print(f"[HIGHBALL] Action Packet valid; action decision is {packet['action_decision']}")

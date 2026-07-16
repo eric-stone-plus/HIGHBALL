@@ -108,10 +108,10 @@ smaller than the old governance model:
 - block unauthorized external actions through KENGEN policy
 
 BANNIN is mechanism. It checks the current session and either passes or blocks.
-The standalone shell guard enforces verdict-trail existence. When the verdict
-contains a JSON residual closure ledger, it also blocks unresolved or
-unsupported `HIGH`, `CRITICAL`, and `P0` findings before protected writes.
-Historical verdicts without a ledger remain on the transitional warning path.
+The standalone shell guard requires a request-bound Action Packet and blocks
+unresolved or unsupported `HIGH`, `CRITICAL`, and `P0` findings before
+protected writes. Historical verdicts without a verifiable packet remain
+evidence but cannot authorize a current write.
 The reusable validator is `bin/validate-residual-trace.py`; it validates
 RASHOMON-compatible traces embedded in markdown verdicts or stored as raw JSON
 artifacts. It is used by `lib/bannin.sh`; downstream consumers should validate
@@ -211,11 +211,12 @@ before BANNIN and KENGEN enforcement.
 `bin/build-action-packet.py` combines a route request, route decision, residual
 trace, validation result, quality metrics, and required execution evidence into
 one reviewable Action Packet for a proposed action. Active QUINTE integrations
-bind an atomic product outcome with `--quinte-result` (`result.json`); the
-builder and validator accept or block that product status only and do not
-revalidate phase, lane, agent, retry, or pacing details. Per-phase dispatch
-ledgers (`--dispatch-ledger`) remain available solely for archived packet
-compatibility.
+bind a request-scoped Result `2.0` bundle with `--quinte-result`; the builder
+validates its sibling manifest and Brief, digests, run identity, fixed product
+shape, and action binding without becoming a lane scheduler. Phase dispatch
+ledgers are not an active input. Required external actions also bind a
+single-use KENGEN artifact with `--kengen-authorization` and consume it
+atomically immediately before the action.
 `schemas/action-packet.schema.json` defines the portable packet shape, and
 `bin/validate-action-packet.py` independently recomputes route, validation,
 quality, execution evidence, and boundary decision to catch malformed or

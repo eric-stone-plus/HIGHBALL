@@ -33,16 +33,16 @@ The routing decision is based on a narrow JSON request:
   "action_boundary": "protected_write",
   "change_class": "protocol",
   "affected_paths": ["path or glob"],
+  "action_scope": "exact scope bound into the QUINTE product",
   "executable": true,
   "risk": "HIGH",
   "trace_quality_gate": "review",
-  "open_high_risk_count": 0,
-  "user_authorized_push": false
+  "open_high_risk_count": 0
 }
 ```
 
-Additional host fields may be present, but the route must be explainable using
-these inputs.
+The request is closed. Unknown host fields are rejected rather than silently
+changing an action outside the bound digest.
 
 ## 4. Decision Rules
 

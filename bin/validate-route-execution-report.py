@@ -23,6 +23,7 @@ def load_module(name: str, path: Path) -> Any:
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILDER = load_module("build_route_execution_report", ROOT / "bin" / "build-route-execution-report.py")
+CONTRACTS = load_module("highball_contracts", ROOT / "bin" / "highball-contracts.py")
 
 
 TOP_LEVEL_FIELDS = {
@@ -55,16 +56,14 @@ PACKET_SUMMARY_FIELDS = {
     "action_decision",
     "execution_required",
     "execution_status",
-    "dispatch_ledger_count",
-    "complete_phase_count",
-    "missing_phases",
+    "quinte_run_id",
+    "quinte_result_sha256",
+    "action_binding_sha256",
     "errors",
-    "warnings",
 }
 INVALID_REF_FIELDS = {"packet_ref", "reason"}
 EXECUTION_STATUSES = {"not_required", "missing", "complete", "blocked", "degraded", "invalid"}
 EXECUTION_GATES = {"accepted", "watch", "reroute", "block", "insufficient"}
-PHASES = {"R1", "R2", "R3"}
 NON_AUTHORIZATION = BUILDER.NON_AUTHORIZATION
 
 
@@ -116,7 +115,7 @@ def load_report(path: Path) -> dict[str, Any]:
             label = "raw JSON" if raw_json_mode else f"JSON block {block_number}"
             errors.append(f"{label} is invalid JSON: {exc.msg}")
             continue
-        if isinstance(parsed, dict) and parsed.get("execution_report_version") == "1.0":
+        if isinstance(parsed, dict) and parsed.get("execution_report_version") == CONTRACTS.ROUTE_EXECUTION_REPORT_VERSION:
             reports.append(parsed)
 
     if len(reports) != 1:
@@ -150,16 +149,11 @@ def validate_packet_summary(index: int, value: Any, errors: list[str]) -> dict[s
         errors.append(f"{prefix}.execution_required must be boolean")
     if item.get("execution_status") not in EXECUTION_STATUSES:
         errors.append(f"{prefix}.execution_status is invalid")
-    for field in ("dispatch_ledger_count", "complete_phase_count"):
-        if not is_nonnegative_int(item.get(field)):
-            errors.append(f"{prefix}.{field} must be a non-negative integer")
-    if not is_string_list(item.get("missing_phases")):
-        errors.append(f"{prefix}.missing_phases must be an array of strings")
-    elif any(phase not in PHASES for phase in item.get("missing_phases", [])):
-        errors.append(f"{prefix}.missing_phases contains an invalid phase")
-    for field in ("errors", "warnings"):
-        if not is_string_list(item.get(field)):
-            errors.append(f"{prefix}.{field} must be an array of strings")
+    for field in ("quinte_run_id", "quinte_result_sha256", "action_binding_sha256"):
+        if item.get(field) is not None and not is_nonempty_string(item.get(field)):
+            errors.append(f"{prefix}.{field} must be a non-empty string or null")
+    if not is_string_list(item.get("errors")):
+        errors.append(f"{prefix}.errors must be an array of strings")
     return item
 
 
@@ -175,8 +169,8 @@ def validate_report(report: Any) -> list[str]:
     if missing:
         errors.append(f"report is missing fields: {', '.join(missing)}")
 
-    if report.get("execution_report_version") != "1.0":
-        errors.append("execution_report_version must be 1.0")
+    if report.get("execution_report_version") != CONTRACTS.ROUTE_EXECUTION_REPORT_VERSION:
+        errors.append(f"execution_report_version must be {CONTRACTS.ROUTE_EXECUTION_REPORT_VERSION}")
     if not is_nonempty_string(report.get("route_group")):
         errors.append("route_group must be a non-empty string")
 

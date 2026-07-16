@@ -22,6 +22,7 @@ def load_module(name: str, path: Path) -> Any:
 
 ROOT = Path(__file__).resolve().parents[1]
 ACTION_PACKET = load_module("validate_action_packet", ROOT / "bin" / "validate-action-packet.py")
+CONTRACTS = load_module("highball_contracts", ROOT / "bin" / "highball-contracts.py")
 
 NON_AUTHORIZATION = "Route execution reports do not authorize action, dispatch agents, or modify routing rules."
 EXECUTION_GATES = {"accepted", "watch", "reroute", "block", "insufficient"}
@@ -60,28 +61,6 @@ def completion_rate(complete_count: int, required_count: int) -> float | None:
     return round(complete_count / required_count, 4)
 
 
-def missing_phases(execution: dict[str, Any]) -> list[str]:
-    required = [
-        phase
-        for phase in execution.get("required_phases", [])
-        if isinstance(phase, str)
-    ]
-    complete = {
-        ledger.get("phase")
-        for ledger in execution.get("dispatch_ledgers", [])
-        if isinstance(ledger, dict) and ledger.get("status") == "complete"
-    }
-    return [phase for phase in required if phase not in complete]
-
-
-def complete_phase_count(execution: dict[str, Any]) -> int:
-    return sum(
-        1
-        for ledger in execution.get("dispatch_ledgers", [])
-        if isinstance(ledger, dict) and ledger.get("status") == "complete"
-    )
-
-
 def summarize_packet(packet_ref: str, packet_path: Path) -> tuple[dict[str, Any] | None, list[str]]:
     try:
         packet = ACTION_PACKET.load_packet(packet_path)
@@ -95,6 +74,7 @@ def summarize_packet(packet_ref: str, packet_path: Path) -> tuple[dict[str, Any]
     status = execution.get("status") if isinstance(execution.get("status"), str) else "invalid"
     if packet_errors:
         status = "invalid"
+    outcome = execution.get("quinte_outcome") if isinstance(execution.get("quinte_outcome"), dict) else {}
 
     summary = {
         "packet_ref": packet_ref,
@@ -105,11 +85,10 @@ def summarize_packet(packet_ref: str, packet_path: Path) -> tuple[dict[str, Any]
         "action_decision": packet.get("action_decision") if isinstance(packet.get("action_decision"), str) else "unknown",
         "execution_required": execution.get("required") is True,
         "execution_status": status,
-        "dispatch_ledger_count": len(execution.get("dispatch_ledgers", [])) if isinstance(execution.get("dispatch_ledgers"), list) else 0,
-        "complete_phase_count": complete_phase_count(execution),
-        "missing_phases": missing_phases(execution),
+        "quinte_run_id": outcome.get("run_id") if isinstance(outcome.get("run_id"), str) else None,
+        "quinte_result_sha256": outcome.get("result_sha256") if isinstance(outcome.get("result_sha256"), str) else None,
+        "action_binding_sha256": outcome.get("action_binding_sha256") if isinstance(outcome.get("action_binding_sha256"), str) else None,
         "errors": [*packet_errors, *[item for item in execution.get("errors", []) if isinstance(item, str)]],
-        "warnings": [item for item in execution.get("warnings", []) if isinstance(item, str)],
     }
     return summary, []
 
@@ -200,7 +179,7 @@ def build_report(packet_refs: list[str], base_file: Path | None = None, route_gr
     gate = derive_gate(summary)
 
     return {
-        "execution_report_version": "1.0",
+        "execution_report_version": CONTRACTS.ROUTE_EXECUTION_REPORT_VERSION,
         "route_group": route_group,
         "inputs": {
             "action_packet_refs": packet_refs,

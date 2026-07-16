@@ -9,11 +9,25 @@ closure rules for high-risk residuals.
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+
+def load_module(name: str, path: Path) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load module at {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+ROOT = Path(__file__).resolve().parents[1]
+CONTRACTS = load_module("highball_contracts", ROOT / "bin" / "highball-contracts.py")
 
 
 ALLOWED_TOP_LEVEL = {
@@ -24,13 +38,16 @@ ALLOWED_TOP_LEVEL = {
     "trial_manifest",
     "action_boundary",
     "highball_decision",
+    "action_binding_sha256",
 }
 REQUIRED_TOP_LEVEL = {
+    "trace_version",
     "question",
     "instrument",
     "residuals",
     "action_boundary",
     "highball_decision",
+    "action_binding_sha256",
 }
 ALLOWED_INSTRUMENTS = {"MAGI", "QUINTE", "direct-evidence", "human"}
 ALLOWED_ACTION_BOUNDARIES = {"none", "reversible", "protected_write", "irreversible"}
@@ -270,8 +287,17 @@ def validate_trace(trace: Any, block_number: int) -> list[Finding]:
     if missing:
         findings.append(Finding("ERROR", f"JSON block {block_number} is missing top-level fields: {', '.join(missing)}"))
 
-    if "trace_version" in trace and not isinstance(trace["trace_version"], str):
-        findings.append(Finding("ERROR", f"JSON block {block_number} trace_version must be a string"))
+    if trace.get("trace_version") != CONTRACTS.RESIDUAL_TRACE_VERSION:
+        findings.append(
+            Finding(
+                "ERROR",
+                f"JSON block {block_number} trace_version must be {CONTRACTS.RESIDUAL_TRACE_VERSION}",
+            )
+        )
+
+    binding = trace.get("action_binding_sha256")
+    if not isinstance(binding, str) or re.fullmatch(r"sha256:[a-f0-9]{64}", binding) is None:
+        findings.append(Finding("ERROR", f"JSON block {block_number} action_binding_sha256 is invalid"))
 
     if not is_nonempty_string(trace.get("question")):
         findings.append(Finding("ERROR", f"JSON block {block_number} question must be a non-empty string"))
@@ -381,6 +407,13 @@ def validate_trace(trace: Any, block_number: int) -> list[Finding]:
                 findings.append(Finding("BLOCK", f"{prefix} {residual_id or 'unknown'} has {closure_state} without scope"))
 
     if action_boundary in {"protected_write", "irreversible"}:
+        if highball_decision in {"block", "escalate"}:
+            findings.append(
+                Finding(
+                    "BLOCK",
+                    f"JSON block {block_number} decision {highball_decision} blocks the action boundary",
+                )
+            )
         if highball_decision == "pass" and high_risk_open:
             findings.append(Finding("BLOCK", f"JSON block {block_number} decision pass conflicts with open high-risk residuals"))
         if highball_decision == "pass" and high_risk_unsupported:
@@ -402,8 +435,8 @@ def main() -> int:
 
     blocks, raw_json_mode = candidate_blocks(text, args.verdict_file)
     if not blocks:
-        print("[BANNIN] WARNING: verdict has no JSON residual closure ledger; closure cannot be verified", file=sys.stderr)
-        return 0
+        print("[BANNIN] ERROR: verdict has no JSON residual closure ledger", file=sys.stderr)
+        return 2
 
     saw_trace = False
     all_findings: list[Finding] = []
@@ -424,8 +457,8 @@ def main() -> int:
             print("[BANNIN] ERROR: raw JSON file does not contain a residuals array", file=sys.stderr)
             return 2
         else:
-            print("[BANNIN] WARNING: verdict JSON found but no residual closure ledger; closure cannot be verified", file=sys.stderr)
-            return 0
+            print("[BANNIN] ERROR: verdict JSON found but no residual closure ledger", file=sys.stderr)
+            return 2
 
     for finding in all_findings:
         print(f"[BANNIN] {finding}", file=sys.stderr)

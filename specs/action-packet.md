@@ -1,125 +1,99 @@
 # Action Packet
 
-> The Action Packet is the portable evidence bundle for a proposed action. It
-> records why a route was selected, what trace was evaluated, and whether the
-> action can cross its boundary.
+The Action Packet is a closed, fail-closed evidence bundle for one proposed
+action. Its contract version is independent of HIGHBALL's release version.
 
-Implementation status: the existing v1 schema, builder, and validator encode a
-retired per-phase QUINTE ledger shape. They remain available only for archived
-packet compatibility. New integrations bind an atomic QUINTE product outcome;
-they must not use the v1 fields to dispatch, retry, or supervise QUINTE.
+## Active Contract
 
-## 1. Purpose
+Action Packet `1.1` binds:
 
-Residual traces are claim artifacts. Route decisions are path artifacts.
-Quality metrics are measurement artifacts. Dispatch evidence is execution
-evidence. Authorization is a boundary artifact.
+- the closed route request and derived SHIMEI route;
+- exactly one residual trace, its structural validation, and quality metrics;
+- for a QUINTE route, one completed QUINTE Result `2.0` plus its sibling
+  manifest and normalized Brief `1.1`;
+- when KENGEN is required, one current user authorization artifact bound to the
+  same action digest;
+- the derived `pass`, `review`, or `block` decision.
 
-An Action Packet binds them for one proposed action so a later operator cannot
-reuse a verdict, route decision, or metric outside its original scope.
+An active residual trace uses Trace `1.1` and carries the same
+`action_binding_sha256`; an otherwise valid trace from another task is not
+reusable.
 
-## 2. Packet Fields
+The active builder accepts only atomic product evidence. Older packet and phase
+records remain visible in Git history but cannot authorize an active action.
+
+## Action Binding
+
+HIGHBALL computes `action_binding_sha256` from exactly these route-request
+fields:
 
 ```json
 {
-  "packet_version": "1.0",
-  "route_request": {},
-  "route_decision": {},
-  "trace": {},
-  "validation": {},
-  "quality": {},
-  "execution_evidence": {},
-  "action_decision": "review",
-  "decision_reasons": ["string"],
-  "required_next_steps": ["string"]
+  "question": "string",
+  "action_boundary": "none | reversible | protected_write | irreversible",
+  "change_class": "string",
+  "affected_paths": ["string"]
 }
 ```
 
-`route_request` follows `specs/residual-routing.md`. `trace` follows RASHOMON
-`schemas/residual-trace.schema.json`. `quality` follows RASHOMON
-`specs/residual-quality-metrics.md`, including trial-manifest metrics when the
-trace declares perturbation conditions.
-`execution_evidence` records whether the selected route requires product-level
-execution proof. When QUINTE is selected, the **active** binding is an atomic
-CLI product outcome (`result.json`) via `binding: atomic_quinte_outcome` and
-`quinte_outcome`. The packet does not summarize or validate QUINTE's internal
-phase, lane, agent, retry, pacing, or artifact state, and must not reconstruct
-R1/R2/R3 scheduling.
+The object is encoded as UTF-8 JSON with keys sorted by Unicode code point, no
+insignificant whitespace, JSON string escaping, and the supplied path order
+preserved. The digest is lowercase SHA-256 prefixed by `sha256:`. The request's
+`action_scope` is additionally compared exactly with the QUINTE brief and
+result; it is deliberately not inferred from evidence roots.
 
-Legacy per-phase `required_phases` / `dispatch_ledgers` fields remain only for
-archived packet compatibility (`binding: legacy_dispatch_ledgers`). Active
-builders accept `--quinte-result`; `--dispatch-ledger` is archived-only.
+## QUINTE Product Binding
 
-`schemas/action-packet.schema.json`, `bin/build-action-packet.py`, and
-`bin/validate-action-packet.py` implement the active atomic binding and keep
-legacy ledger parsing for archived packets.
+For an active QUINTE route, `--quinte-result` must refer to the standard
+`result.json` in a run directory. HIGHBALL validates the complete Result `2.0`
+shape and binds it to:
 
-## 3. Decision Rule
+- sibling `manifest.json` and `input/brief.json`;
+- canonical run UUID and standard run-directory name;
+- completed manifest and product statuses;
+- exact result and normalized brief digests recorded by the manifest;
+- the trusted QUINTE runs root, active installed executable digest, and
+  `quinte inspect RUN_ID --json` state;
+- request question, action scope, affected paths, and action-binding digest;
+- the fixed five QUINTE perspectives and accepted artifact paths.
 
-The Action Packet is conservative:
+A missing, degraded, legacy, malformed, moved, tampered, or differently scoped
+product blocks. HIGHBALL does not schedule or retry QUINTE lanes.
 
-1. Structural validation errors set `action_decision` to `block`.
-2. Validator block findings set `action_decision` to `block`.
-3. Route `block` sets `action_decision` to `block`.
-4. Required QUINTE product outcome that is missing, invalid, blocked, or
-   degraded sets `action_decision` to `block`.
-5. Quality gate `block` sets `action_decision` to `block`.
-6. Route and trace instrument mismatch sets `action_decision` to `review`,
-   unless a stricter block already applies.
-7. Route request and trace action-boundary mismatch sets `review`, unless a
-   stricter block already applies.
-8. Missing KENGEN authorization sets `review` for actions that require KENGEN.
-9. Quality gate `review` sets `review` unless a block applies.
-10. Otherwise the packet may pass.
+## KENGEN
 
-`pass` means the packet has enough evidence for the selected boundary. It does
-not authorize `git push`, deletion, credential mutation, deployment, legal
-commitment, or money movement. KENGEN still owns authorization.
+Protected action classes and irreversible boundaries require an explicit
+KENGEN authorization artifact. The artifact contains a unique authorization
+ID, `authorized_by: user`, `decision: authorize`, the exact action-binding
+digest, and an issue/expiry window of at most eight hours.
 
-## 4. Route And Trace Compatibility
+The packet binds and validates the artifact. Immediately before the external
+action, the host must run `bin/consume-kengen-authorization.py`. Its atomic
+create-if-absent claim makes each authorization ID single use; an existing
+claim blocks replay. Evidence, QUINTE output, and an Action Packet do not
+themselves authorize an external action.
 
-- `direct-evidence` is compatible with `trace.instrument: direct-evidence`.
-- `MAGI` is compatible with `trace.instrument: MAGI`.
-- `QUINTE` is compatible with `trace.instrument: QUINTE`.
-- `human-review` is compatible with `trace.instrument: human`.
-- `block` is compatible with any trace that records the block condition.
+## Decision Rule
 
-Mismatch does not always mean the work is invalid. It means the packet cannot
-prove that the selected route produced the supplied trace.
+The decision is conservative:
 
-For QUINTE, compatibility also requires a completed atomic product outcome. If
-that outcome is missing, blocked, degraded, or invalid, the Action Packet
-blocks. HIGHBALL does not look through the outcome to judge phase completion or
-retry behavior; those are QUINTE scheduler invariants. This prevents a residual
-trace from laundering an unsuccessful product invocation into protected-write
-evidence without creating a second scheduler.
+1. Malformed traces, validator blocks, or route `block` block.
+2. Missing or invalid required execution evidence blocks.
+3. `highball_decision: block` or `escalate` blocks even with no residuals.
+4. Route/trace instrument, question, or boundary mismatch blocks.
+5. Missing, invalid, expired, mismatched, or replayed KENGEN authorization
+   blocks an action that requires KENGEN.
+6. Quality `block` blocks; quality `review` remains non-authorizing review.
+7. Only `pass` has validator exit code zero.
 
-When multiple Action Packets accumulate for a route group, HIGHBALL can
-summarize their execution reliability with
-`specs/residual-route-execution.md`. That route-level report feeds policy
-review; it does not change the decision for the original packet.
+`bin/validate-action-packet.py` independently recomputes the route, trace
+validation, quality, product binding, authorization binding, and decision.
 
-The route request and trace must also cover the same action boundary. A
-boundary mismatch is a review condition because the trace may be valid evidence
-for a different boundary while failing to cover the proposed action.
+## Exit Codes
 
-## 5. Validator Exit Codes
+- `0`: valid packet with decision `pass`.
+- `1`: valid packet with non-authorizing `review` or `block`.
+- `2`: malformed or internally inconsistent packet.
 
-`bin/validate-action-packet.py` exits with:
-
-- `0`: packet is structurally valid and its action decision is `pass` or `review`.
-- `1`: packet is structurally valid and its action decision is `block`.
-- `2`: packet is malformed or inconsistent with derived route, validation, quality, or decision values.
-
-## 6. Non-Goals
-
-Action Packet does not:
-
-- dispatch agents
-- mutate files
-- authorize push or irreversible operations
-- prove truth
-- rewrite earlier outputs
-
-It packages route, trace, validation, measurement, and boundary decision into a
-single reviewable artifact.
+The schema is `schemas/action-packet.schema.json`; product and digest contract
+identifiers are centralized in `bin/highball-contracts.py`.
