@@ -67,9 +67,8 @@ HIGHBALL may block the outer action when the product outcome is absent or
 unsuccessful, but it must not repair internal artifacts or retry internal
 lanes.
 
-The existing v1 SHIMEI host-overlay schema and validator describe the retired
-per-agent routing contract. They remain compatibility tools for archived
-overlays and are not an active QUINTE dispatch surface.
+The retired per-agent host-overlay contract remains available in Git history
+only. It is not an active or executable QUINTE dispatch surface.
 
 ## Rules Repositories
 
@@ -222,9 +221,9 @@ atomically immediately before the action.
 quality, execution evidence, and boundary decision to catch malformed or
 inconsistent packets.
 
-`schemas/shimei-host-overlay.schema.json` documents the retired v1 per-agent
-overlay shape for compatibility. Active integrations bind the `quinte`
-entrypoint as one SHIMEI product route.
+Active integrations bind the `quinte` entrypoint as one SHIMEI product route.
+Historical per-agent overlay shapes are evidence in Git history, not live
+schemas or validators.
 
 ## Non-Runtime References
 

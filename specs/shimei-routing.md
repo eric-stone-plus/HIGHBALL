@@ -80,7 +80,6 @@ SHIMEI is authored in HIGHBALL and mirrored into the current
 repositories. Those profile repos are distribution packages, not independent
 authorities. Archived `hermes-core-rules-*` repositories are not updated.
 
-The v1 `schemas/shimei-host-overlay.schema.json` and
-`bin/validate-shimei-host-overlay.py` describe the retired per-agent overlay.
-They remain available for archived-overlay validation only and must not be used
-as an active QUINTE dispatch contract.
+The retired per-agent overlay contract remains in Git history only. No live
+schema or validator may make it look callable; active QUINTE routing binds the
+atomic `quinte` product entrypoint.
