@@ -21,6 +21,7 @@ log="${2:-}"
 packet="${4:-}"
 [ -n "$log" ] && [ -n "$packet" ] || usage
 [ -f "$log" ] || { echo "[BANNIN] ERROR: log not found: $log" >&2; exit 2; }
+[ -r "$log" ] || { echo "[BANNIN] ERROR: log is not readable: $log" >&2; exit 2; }
 
 if ! has_arch_critical_write "$log"; then
   echo "[BANNIN] no protected engineering write in log"
