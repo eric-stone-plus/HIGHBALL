@@ -20,6 +20,15 @@ concrete Hermes profiles. Archived `hermes-core-rules-*` repositories are
 historical records and must not receive new runtime rules. None of these is a
 separate protocol authority.
 
+## Design Vocabulary
+
+QUINTE's prompt layer is scenario-oriented (面向情景): it stages scenario
+positions in which models improvise analyses. HIGHBALL never constructs,
+inspects, or edits those scenarios. It is the deterministic scaffold around
+them: SHIMEI binds the route, KENGEN decides authorization, BANNIN guards the
+write. Scenario output becomes an external action only by crossing these
+contract boundaries.
+
 ## Runtime Components
 
 Only these components can route, authorize, or guard a Hermes operation.
