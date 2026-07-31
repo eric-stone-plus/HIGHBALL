@@ -4,15 +4,16 @@ Process cleanup is not an active HIGHBALL responsibility.
 
 QUINTE owns the complete lifecycle of processes it starts, including worker
 identity, heartbeats, dead-worker detection, cancellation, cleanup, recovery,
-and finalization. Product Router sees one atomic `quinte` process boundary and must not
-scan for, kill, or restart QUINTE's internal workers.
+and finalization. Product Router sees one atomic `quinte` process boundary and
+must not scan for, kill, or restart QUINTE's internal workers.
 
 Generic host resource management may still exist outside HIGHBALL, but it is
 not a QUINTE routing policy and cannot infer ownership from agent names, output
 files, providers, models, or phases.
 
-Protected-Write Guard is now limited to protected-write guarding and residual closure. Authorization Gate
-owns external-action authorization. Neither component owns process cleanup.
+Protected-Write Guard is limited to protected-write validation and residual
+closure. Authorization Gate owns external-action authorization. Neither
+component owns process cleanup.
 
 This file is retained only to make the retired contract explicit for older
 rules distributions.

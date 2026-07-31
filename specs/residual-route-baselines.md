@@ -1,7 +1,8 @@
 # Residual Route Baselines
 
 > Baseline comparison asks whether a route earned its cost against a cheaper or
-> stronger evidence path. It does not prove truth and does not authorize action.
+> stronger evidence path. It does not authorize action or calculate a
+> correctness probability.
 
 ## 1. Purpose
 
@@ -71,6 +72,6 @@ Route baseline reports do not:
 - replace Action Packets
 - replace route policy reports
 - replace route experiment manifests or reviews
-- turn residual scores into truth probabilities
+- turn residual scores into calibrated correctness probabilities
 
 They are review evidence for future route policy changes.

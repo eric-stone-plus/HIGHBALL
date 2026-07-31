@@ -1,7 +1,7 @@
 # Residual Route Calibration
 
-> Route calibration compares trace cohorts. It does not prove truth, authorize
-> action, or aggregate answers.
+> Route calibration compares trace cohorts. It does not authorize action,
+> aggregate outputs, or calculate a correctness probability.
 
 ## 1. Purpose
 
@@ -9,15 +9,15 @@ Residual trial scoring evaluates one trace or a small trace bundle. Route
 calibration evaluates whether a route should remain the default for similar
 future work.
 
-This is the operational answer to the multi-agent debate literature: fixed
-debate pipelines can waste tokens, amplify correlated errors, or hide invalid
-artifacts. A route earns continued use only when cohorts show inspectable
-residual yield, supported closure, clear trial conditions, and acceptable cost.
+A route earns continued use only when cohorts show inspectable residual yield,
+supported closure, explicit trial conditions, and acceptable cost. Correlated
+errors, invalid artifacts, and token cost remain visible inputs.
 
 ## 2. Inputs
 
 `bin/calibrate-residual-routes.py` accepts residual trace files or directories.
-It scans `.json` and `.md` files, extracts RASHOMON residual traces, validates
+It scans `.json` and `.md` files, extracts `RASHOMON`-namespaced compatibility
+traces, validates
 candidate traces, scores valid traces with `bin/score-residual-trial.py`, and
 emits a portable calibration report. The report schema is
 `schemas/route-calibration-report.schema.json`; the independent validator is
@@ -85,7 +85,8 @@ HIGHBALL uses `specs/residual-outcome-ledger.md` for that feedback layer.
 Outcome ledgers bind follow-up command, test, runtime, source, human-review, or
 external observations to traces, Action Packets, and calibration reports. They
 can support, weaken, or complicate a route policy, but they do not create a
-truth oracle. They document what was observed after the route decision.
+authorization or correctness oracle. They document what was observed after the
+route decision.
 
 Route-baseline comparison is specified in
 `specs/residual-route-baselines.md`. It asks whether a useful-looking route
@@ -112,7 +113,7 @@ Route calibration does not:
 - dispatch agents
 - close residuals
 - authorize protected writes
-- estimate truth probability
+- estimate a calibrated correctness probability
 - reward consensus without evidence
 - treat malformed artifacts as absence of risk
 - replace route-baseline comparison when multiple same-boundary routes exist

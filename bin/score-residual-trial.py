@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Score residual trial evidence without estimating truth probability."""
+"""Score residual trial evidence without estimating correctness probability."""
 
 from __future__ import annotations
 

@@ -88,6 +88,17 @@ def write(path: Path, value: Any) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def digest_value(value: Any) -> str:
+    return CONTRACTS.sha256_bytes(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    )
+
+
+def write_digest(path: Path, value: Any) -> str:
+    write(path, value)
+    return CONTRACTS.sha256_bytes(path.read_bytes())
+
+
 def request(**changes: Any) -> dict[str, Any]:
     value = {
         "question": "Should this protected change proceed?",
@@ -245,45 +256,377 @@ def product(home: Path, req: dict[str, Any], binary: Path, *, result_version: st
 def magi_product(root: Path, req: dict[str, Any], decision: str = "PASS") -> Path:
     trial = root / "magi-trial"
     trial.mkdir(parents=True)
+    trial_id = "trial-001"
+    original_brief = {
+        "question": req["question"],
+        "action_scope": req["action_scope"],
+        "affected_paths": req["affected_paths"],
+        "action_binding_sha256": CONTRACTS.action_binding_sha256(req),
+    }
+    original_brief_sha = write_digest(trial / "input" / "original-brief.json", original_brief)
+
+    families = ("mimo", "deepseek", "openai")
+    profile_ids = ("formalist", "empirical", "adversarial")
+    assignment_seats = []
+    product_seats = []
+    for index, (family, profile_id) in enumerate(zip(families, profile_ids), start=1):
+        seat_id = f"seat-{index}"
+        profile_digest = "sha256:" + str(index) * 64
+        assignment_seats.append(
+            {
+                "seat_id": seat_id,
+                "family": family,
+                "provider": f"provider-{family}",
+                "text_model": f"model-{family}",
+                "multimodal_model": f"model-{family}",
+                "profile_id": profile_id,
+                "profile_source_sha256": profile_digest,
+                "container_service": seat_id,
+                "image_digest": "sha256:" + str(index + 5) * 64,
+                "primary_focus": [f"focus-{index}"],
+                "mandatory_global_checks": ["citation", "contradiction"],
+                "evidence_refs": [],
+                "carrier_capabilities": {
+                    "carrier_id": family,
+                    "snapshot_media_classes": ["document"],
+                    "multimodal_media_types": [],
+                    "allow_sampled_video": False,
+                },
+                "cost_rationale": "Distinct review value.",
+                "independence_class": "distinct_family_and_profile",
+                "limitations": [],
+            }
+        )
+        mapping = {
+            "mapping_receipt_version": "1.0",
+            "seat_id": seat_id,
+            "evidence_manifest_sha256": "sha256:" + "e" * 64,
+            "assignment_plan_sha256": "sha256:" + "f" * 64,
+            "assigned_evidence_refs": [],
+            "quinte_run_id": f"run-{index}",
+            "quinte_snapshot_manifest_ref": "quinte-run/input/snapshot-manifest.json",
+            "quinte_snapshot_manifest_sha256": "sha256:" + "0" * 64,
+            "mappings": [],
+            "unmapped_canonical_refs": [],
+            "unmapped_quinte_local_refs": [],
+            "limitations": [
+                "Mapping joins staged digests to QUINTE snapshot/attachment entries; it does not prove model perception.",
+                "Unmapped QUINTE-local refs are reported when the snapshot tree contains extra files.",
+            ],
+        }
+        mapping_identity = {
+            key: value for key, value in mapping.items() if key != "receipt_binding_sha256"
+        }
+        mapping["receipt_binding_sha256"] = digest_value(mapping_identity)
+        mapping_ref = f"dossiers/{seat_id}-evidence-mapping-receipt.json"
+        mapping_sha = write_digest(trial / mapping_ref, mapping)
+        dossier = {
+            "dossier_version": "1.0",
+            "seat_id": seat_id,
+            "profile_id": profile_id,
+            "profile_ref": "profile.json",
+            "profile_sha256": profile_digest,
+            "reviewer_profile_ref": "reviewer-profile",
+            "reviewer_profile_sha256": profile_digest,
+            "thesis_ref": "thesis.json",
+            "thesis_sha256": "sha256:" + str(index + 3) * 64,
+            "perspective_input_ref": "perspective-input.json",
+            "perspective_input_sha256": "sha256:" + str(index + 6) * 64,
+            "original_brief_sha256": original_brief_sha,
+            "derived_quinte_brief_sha256": "sha256:" + chr(96 + index) * 64,
+            "quinte_run_ref": "quinte-run",
+            "quinte_manifest_sha256": "sha256:" + chr(99 + index) * 64,
+            "quinte_result_sha256": "sha256:" + str(index + 6) * 64,
+            "assignment_plan_sha256": None,
+            "assigned_evidence_refs": [],
+            "evidence_mapping_ref": f"{seat_id}-evidence-mapping-receipt.json",
+            "evidence_mapping_sha256": mapping_sha,
+        }
+        dossier_ref = f"dossiers/{seat_id}.json"
+        dossier_sha = write_digest(trial / dossier_ref, dossier)
+        product_seats.append(
+            {
+                "seat_id": seat_id,
+                "family": family,
+                "provider": f"provider-{family}",
+                "text_model": f"model-{family}",
+                "multimodal_model": f"model-{family}",
+                "profile_sha256": profile_digest,
+                "thesis_sha256": dossier["thesis_sha256"],
+                "dossier_ref": dossier_ref,
+                "dossier_sha256": dossier_sha,
+                "quinte_run_id": f"run-{index}",
+                "quinte_manifest_sha256": dossier["quinte_manifest_sha256"],
+                "quinte_result_sha256": dossier["quinte_result_sha256"],
+                "assigned_evidence_refs": [],
+                "evidence_mapping_ref": mapping_ref,
+                "evidence_mapping_sha256": mapping_sha,
+            }
+        )
+
+    assignment_reviews = [
+        {
+            "reviewer_seat_id": reviewer,
+            "subject_seat_id": subject,
+            "review_kind": "artifact_review",
+            "required_checks": ["challenge claims", "preserve dissent"],
+            "evidence_refs": [],
+            "limitations": ["Original evidence is not exposed."],
+        }
+        for reviewer in ("seat-1", "seat-2", "seat-3")
+        for subject in ("seat-1", "seat-2", "seat-3")
+        if reviewer != subject
+    ]
+    assignment_identity = {
+        "assignment_plan_version": "1.0",
+        "trial_id": trial_id,
+        "objective": "Reduce decision-relevant residual uncertainty.",
+        "global_checks": ["citation", "contradiction"],
+        "seats": assignment_seats,
+        "cross_review_obligations": assignment_reviews,
+        "finale_condition": {
+            "allowed_outcomes": ["BLOCK", "ESCALATE", "PASS"],
+            "material_residual_states": ["bounded_escalation", "closed", "falsified"],
+            "required_receipts": ["evidence coverage", "residual reduction"],
+            "stop_rule": "Stop when further review is not decision-relevant.",
+        },
+        "limitations": ["One trial does not estimate a true error rate."],
+    }
+    assignment = {
+        **assignment_identity,
+        "plan_binding_sha256": digest_value(assignment_identity),
+    }
+    assignment_ref = "private/assignment-plan.json"
+    assignment_sha = write_digest(trial / assignment_ref, assignment)
+
+    manifest_identity = {
+        "evidence_manifest_version": "1.0",
+        "original_brief_ref": "input/original-brief.json",
+        "original_brief_sha256": original_brief_sha,
+        "source_root": "none://no-external-evidence",
+        "staged_root_ref": "trial-private/evidence",
+        "source_files": [],
+        "derived_frames": [],
+        "limitations": ["No external evidence was staged; conclusions are brief-only."],
+    }
+    manifest = {
+        **manifest_identity,
+        "evidence_set_sha256": digest_value(manifest_identity),
+    }
+    manifest_ref = "trial-private/evidence/evidence-manifest.json"
+    manifest_sha = write_digest(trial / manifest_ref, manifest)
+
+    final_verdict = {
+        "verdict_version": "1.0",
+        "decision": decision,
+        "summary": "Final decision.",
+        "recommendation": "Act only within the bound scope.",
+        "findings": [],
+        "dissent": [],
+    }
+    final_verdict_ref = "final/verdict.json"
+    final_verdict_sha = write_digest(trial / final_verdict_ref, final_verdict)
+    residual_trace_ref = "final/residual-trace.json"
+    residual_trace_sha = write_digest(
+        trial / residual_trace_ref,
+        {
+            "trace_version": "1.1",
+            "question": req["question"],
+            "instrument": "MAGI",
+            "residuals": [],
+            "trial_manifest": {
+                "manifest_version": "1.0",
+                "base_model_relation": "heterogeneous_models",
+                "perspective_count": 3,
+                "perspectives": [],
+                "perturbation_axes": [],
+                "independence_controls": [],
+                "contamination_risks": [],
+                "cost": {"total_tokens": None, "wall_time_seconds": None, "tool_calls": None, "human_minutes": None},
+            },
+            "action_boundary": req["action_boundary"],
+            "highball_decision": {"PASS": "pass", "BLOCK": "block", "ESCALATE": "escalate"}.get(
+                decision, "block"
+            ),
+            "action_binding_sha256": CONTRACTS.action_binding_sha256(req),
+        },
+    )
+
+    cross_reviews = []
+    aliases = {"seat-1": "Perspective A", "seat-2": "Perspective B", "seat-3": "Perspective C"}
+    for index, obligation in enumerate(assignment_reviews, start=1):
+        reviewer = obligation["reviewer_seat_id"]
+        subject = obligation["subject_seat_id"]
+        seat_index = int(reviewer[-1])
+        methodology = [
+            {"kind": "method", "method": "structured challenge", "application": "Checked claims."},
+            {"kind": "failure_check", "method": "omission scan", "application": "Checked omissions."},
+        ]
+        review = {
+            "review_version": "1.1",
+            "reviewer_alias": aliases[reviewer],
+            "subject_alias": aliases[subject],
+            "reviewer_profile_binding": {
+                "profile_id": profile_ids[seat_index - 1],
+                "profile_sha256": product_seats[seat_index - 1]["profile_sha256"],
+                "profile_source_sha256": assignment_seats[seat_index - 1]["profile_source_sha256"],
+                "thesis_sha256": product_seats[seat_index - 1]["thesis_sha256"],
+            },
+            "methodology_trace": methodology,
+            "summary": "Review complete.",
+            "findings": [],
+            "dissent": [],
+        }
+        review_ref = f"reviews/{index}.json"
+        review_sha = write_digest(trial / review_ref, review)
+        agent_digest = CONTRACTS.sha256_bytes(f"reviewer-agent-config-{seat_index}".encode())
+        execution = {
+            "receipt_version": "1.0",
+            "kind": "cross_review",
+            "service": reviewer,
+            "seat_id": reviewer,
+            "image_digest": assignment_seats[seat_index - 1]["image_digest"],
+            "profile_sha256": assignment_seats[seat_index - 1]["profile_source_sha256"],
+            "agent_config_sha256": agent_digest,
+            "input_packet_sha256": CONTRACTS.sha256_bytes(f"packet-{index}".encode()),
+            "output_artifact_sha256": review_sha,
+            "execution_mode": "container",
+        }
+        execution_ref = f"reviews/{index}-execution-receipt.json"
+        execution_sha = write_digest(trial / execution_ref, execution)
+        cross_reviews.append(
+            {
+                "artifact_ref": review_ref,
+                "sha256": review_sha,
+                "reviewer_seat_id": reviewer,
+                "reviewer_family": families[seat_index - 1],
+                "reviewer_provider": f"provider-{families[seat_index - 1]}",
+                "reviewer_text_model": f"model-{families[seat_index - 1]}",
+                "reviewer_multimodal_model": f"model-{families[seat_index - 1]}",
+                "reviewer_profile_id": profile_ids[seat_index - 1],
+                "reviewer_profile_sha256": product_seats[seat_index - 1]["profile_sha256"],
+                "reviewer_profile_source_sha256": assignment_seats[seat_index - 1]["profile_source_sha256"],
+                "reviewer_agent_config_sha256": agent_digest,
+                "methodology_trace_sha256": digest_value(methodology),
+                "reviewer_execution_receipt_ref": execution_ref,
+                "reviewer_execution_receipt_sha256": execution_sha,
+            }
+        )
+
+    adjudicator_agent_sha = CONTRACTS.sha256_bytes(b"final-adjudicator-agent")
+    final_execution = {
+        "receipt_version": "1.0",
+        "kind": "final_adjudication",
+        "service": "final-adjudicator",
+        "seat_id": None,
+        "image_digest": "sha256:" + "9" * 64,
+        "profile_sha256": None,
+        "agent_config_sha256": adjudicator_agent_sha,
+        "input_packet_sha256": CONTRACTS.sha256_bytes(b"final-packet"),
+        "output_artifact_sha256": final_verdict_sha,
+        "execution_mode": "external_model",
+    }
+    final_execution_ref = "final/adjudicator-execution-receipt.json"
+    final_execution_sha = write_digest(trial / final_execution_ref, final_execution)
+
+    reduction_identity = {
+        "receipt_version": "1.0",
+        "metric_scope": "observable source coverage",
+        "baseline_scope": "three seat dossiers",
+        "seat_residual_source_refs": [],
+        "cross_review_source_refs": [],
+        "cross_review_novel_source_refs": [],
+        "cross_review_linked_source_refs": [],
+        "challenged_seat_source_refs": [],
+        "final_represented_source_refs": [],
+        "final_falsified_or_discarded_source_refs": [],
+        "final_finding_ids": [],
+        "final_unresolved_finding_ids": [],
+        "counts": {field: 0 for field in PRODUCT.MAGI_RESIDUAL_REDUCTION_COUNT_FIELDS},
+        "limitations": ["This receipt does not measure a true error rate."],
+    }
+    reduction = {**reduction_identity, "binding_sha256": digest_value(reduction_identity)}
+    reduction_ref = "final/residual-reduction-receipt.json"
+    reduction_sha = write_digest(trial / reduction_ref, reduction)
+
+    coverage_artifact_refs = [
+        *(seat["dossier_ref"] for seat in product_seats),
+        *(review["artifact_ref"] for review in cross_reviews),
+        final_verdict_ref,
+        residual_trace_ref,
+    ]
+    coverage_artifacts = [
+        {
+            "artifact_ref": reference,
+            "sha256": CONTRACTS.sha256_bytes((trial / reference).read_bytes()),
+            "evidence_refs": [],
+        }
+        for reference in coverage_artifact_refs
+    ]
+    coverage_identity = {
+        "coverage_receipt_version": "1.0",
+        "coverage_status": "bounded",
+        "coverage_scope": "artifact citation coverage; not proof of model perception or review",
+        "original_brief_sha256": original_brief_sha,
+        "evidence_manifest_ref": manifest_ref,
+        "evidence_manifest_sha256": manifest_sha,
+        "artifacts": coverage_artifacts,
+        "exposed_evidence": [],
+        "cited_evidence": [],
+        "exposed_but_uncited": [],
+        "unknown_citations": [],
+        "unreviewed_media": [],
+        "declared_limitations": ["No external evidence was staged."],
+        "limitations": [
+            "Mounted or exposed evidence is not equivalent to evidence read or reviewed.",
+            "A citation is an artifact claim and does not attest semantic correctness.",
+        ],
+    }
+    coverage = {
+        **coverage_identity,
+        "receipt_binding_sha256": digest_value(coverage_identity),
+    }
+    coverage_ref = "final/evidence-coverage-receipt.json"
+    coverage_sha = write_digest(trial / coverage_ref, coverage)
+
     identity = {
         "product_version": "1.0",
-        "trial_id": "trial-001",
+        "trial_id": trial_id,
         "status": "completed",
         "runtime_sha256": "sha256:" + "1" * 64,
         "agent_config_sha256": "sha256:" + "2" * 64,
         "builder_config_sha256": "sha256:" + "3" * 64,
-        "original_brief_sha256": "sha256:" + "4" * 64,
+        "assignment_plan_ref": assignment_ref,
+        "assignment_plan_sha256": assignment_sha,
+        "evidence_manifest_ref": manifest_ref,
+        "evidence_manifest_sha256": manifest_sha,
+        "evidence_coverage_ref": coverage_ref,
+        "evidence_coverage_sha256": coverage_sha,
+        "original_brief_sha256": original_brief_sha,
         "action_binding_sha256": CONTRACTS.action_binding_sha256(req),
         "question": req["question"],
         "action_scope": req["action_scope"],
         "affected_paths": req["affected_paths"],
         "final_decision": decision,
         "final_dissent": [],
-        "final_verdict_ref": "final/verdict.json",
-        "final_verdict_sha256": "sha256:" + "5" * 64,
-        "residual_trace_ref": "final/residual-trace.json",
-        "residual_trace_sha256": "sha256:" + "6" * 64,
-        "seats": [
-            {
-                "seat_id": f"seat-{index}",
-                "family": family,
-                "provider": f"provider-{family}",
-                "text_model": f"model-{family}",
-                "multimodal_model": f"model-{family}",
-                "profile_sha256": "sha256:" + str(index) * 64,
-                "thesis_sha256": "sha256:" + str(index + 3) * 64,
-                "dossier_ref": f"dossiers/seat-{index}.json",
-                "dossier_sha256": "sha256:" + str(index + 6) * 64,
-                "quinte_run_id": f"run-{index}",
-                "quinte_manifest_sha256": "sha256:" + chr(96 + index) * 64,
-                "quinte_result_sha256": "sha256:" + chr(99 + index) * 64,
-            }
-            for index, family in enumerate(("mimo", "deepseek", "openai"), start=1)
-        ],
-        "cross_reviews": [
-            {"artifact_ref": f"reviews/{index}.json", "sha256": "sha256:" + format(index, "x") * 64}
-            for index in range(1, 7)
-        ],
+        "final_verdict_ref": final_verdict_ref,
+        "final_verdict_sha256": final_verdict_sha,
+        "residual_trace_ref": residual_trace_ref,
+        "residual_trace_sha256": residual_trace_sha,
+        "residual_reduction_ref": reduction_ref,
+        "residual_reduction_sha256": reduction_sha,
+        "final_adjudicator": {
+            "family": "openai",
+            "provider": "openai-api",
+            "text_model": "gpt-5.6-sol",
+            "multimodal_model": "gpt-5.6-sol",
+            "agent_config_sha256": adjudicator_agent_sha,
+            "execution_mode": "external_model",
+            "execution_receipt_ref": final_execution_ref,
+            "execution_receipt_sha256": final_execution_sha,
+        },
+        "seats": product_seats,
+        "cross_reviews": cross_reviews,
     }
     encoded = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     write(trial / "product-summary.json", {**identity, "product_sha256": CONTRACTS.sha256_bytes(encoded)})
@@ -431,6 +774,29 @@ class FailClosedTests(unittest.TestCase):
         summary_path = trial / "product-summary.json"
         summary = json.loads(summary_path.read_text())
         summary["final_dissent"] = ["material dissent preserved"]
+        verdict_path = trial / summary["final_verdict_ref"]
+        verdict = json.loads(verdict_path.read_text())
+        verdict["dissent"] = summary["final_dissent"]
+        write(verdict_path, verdict)
+        summary["final_verdict_sha256"] = CONTRACTS.sha256_bytes(verdict_path.read_bytes())
+        execution_path = trial / summary["final_adjudicator"]["execution_receipt_ref"]
+        execution = json.loads(execution_path.read_text())
+        execution["output_artifact_sha256"] = summary["final_verdict_sha256"]
+        write(execution_path, execution)
+        summary["final_adjudicator"]["execution_receipt_sha256"] = CONTRACTS.sha256_bytes(
+            execution_path.read_bytes()
+        )
+        coverage_path = trial / summary["evidence_coverage_ref"]
+        coverage = json.loads(coverage_path.read_text())
+        for artifact in coverage["artifacts"]:
+            if artifact["artifact_ref"] == summary["final_verdict_ref"]:
+                artifact["sha256"] = summary["final_verdict_sha256"]
+        coverage_identity = {
+            key: value for key, value in coverage.items() if key != "receipt_binding_sha256"
+        }
+        coverage["receipt_binding_sha256"] = digest_value(coverage_identity)
+        write(coverage_path, coverage)
+        summary["evidence_coverage_sha256"] = CONTRACTS.sha256_bytes(coverage_path.read_bytes())
         identity = {key: value for key, value in summary.items() if key != "product_sha256"}
         summary["product_sha256"] = CONTRACTS.sha256_bytes(
             json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
@@ -524,6 +890,212 @@ class FailClosedTests(unittest.TestCase):
         self.assertTrue(any("profile_sha256 is invalid" in error for error in errors))
         self.assertTrue(any("six distinct cross-review refs" in error for error in errors))
         self.assertTrue(any("cross_reviews[2].sha256 is invalid" in error for error in errors))
+
+    def test_magi_review_provenance_is_closed_and_digest_bound(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        fields = (
+            "reviewer_profile_sha256",
+            "reviewer_profile_source_sha256",
+            "reviewer_agent_config_sha256",
+            "methodology_trace_sha256",
+            "reviewer_execution_receipt_sha256",
+        )
+        for index, field in enumerate(fields):
+            with self.subTest(field=field):
+                trial = magi_product(self.root / field, req)
+                summary_path = trial / "product-summary.json"
+                summary = json.loads(summary_path.read_text())
+                summary["cross_reviews"][index][field] = "not-a-digest"
+                identity = {key: value for key, value in summary.items() if key != "product_sha256"}
+                summary["product_sha256"] = CONTRACTS.sha256_bytes(
+                    json.dumps(
+                        identity,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode()
+                )
+                write(summary_path, summary)
+                packet = self.build(req, tr, magi=trial)
+                self.assertEqual(packet["product_evidence"]["status"], "invalid")
+                self.assertTrue(
+                    any(
+                        f"cross_reviews[{index}].{field} is invalid" in error
+                        for error in packet["product_evidence"]["errors"]
+                    )
+                )
+
+        trial = magi_product(self.root / "unknown", req)
+        summary_path = trial / "product-summary.json"
+        summary = json.loads(summary_path.read_text())
+        summary["cross_reviews"][0]["unverified_provenance"] = "sha256:" + "f" * 64
+        identity = {key: value for key, value in summary.items() if key != "product_sha256"}
+        summary["product_sha256"] = CONTRACTS.sha256_bytes(
+            json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        )
+        write(summary_path, summary)
+        packet = self.build(req, tr, magi=trial)
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+        self.assertTrue(
+            any(
+                "cross_reviews[0] has unknown fields: unverified_provenance" in error
+                for error in packet["product_evidence"]["errors"]
+            )
+        )
+
+    def test_magi_review_receipts_bind_each_reviewer_to_its_frozen_seat(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        cases = (
+            ("family", lambda summary: summary["cross_reviews"][0].__setitem__("reviewer_family", "deepseek"), "reviewer_family does not match"),
+            ("profile", lambda summary: summary["cross_reviews"][0].__setitem__("reviewer_profile_sha256", "sha256:" + "f" * 64), "reviewer_profile_sha256 does not match"),
+            ("drift", lambda summary: summary["cross_reviews"][1].__setitem__("reviewer_profile_id", "changed"), "changes the frozen reviewer binding"),
+            ("count", lambda summary: summary["cross_reviews"][5].__setitem__("reviewer_seat_id", "seat-1"), "exactly two cross-reviews from each seat"),
+            ("receipt", lambda summary: summary["cross_reviews"][1].__setitem__("reviewer_execution_receipt_ref", summary["cross_reviews"][0]["reviewer_execution_receipt_ref"]), "six distinct reviewer execution receipt refs"),
+        )
+        for name, mutate, expected in cases:
+            with self.subTest(case=name):
+                trial = magi_product(self.root / name, req)
+                summary_path = trial / "product-summary.json"
+                summary = json.loads(summary_path.read_text())
+                mutate(summary)
+                identity = {key: value for key, value in summary.items() if key != "product_sha256"}
+                summary["product_sha256"] = CONTRACTS.sha256_bytes(
+                    json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+                )
+                write(summary_path, summary)
+                packet = self.build(req, tr, magi=trial)
+                self.assertEqual(packet["product_evidence"]["status"], "invalid")
+                self.assertTrue(any(expected in error for error in packet["product_evidence"]["errors"]))
+
+    def test_magi_final_adjudicator_provenance_is_closed_and_digest_bound(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        cases = (
+            ("missing", lambda summary: summary.pop("final_adjudicator"), "missing fields: final_adjudicator"),
+            ("digest", lambda summary: summary["final_adjudicator"].__setitem__("execution_receipt_sha256", "not-a-digest"), "execution_receipt_sha256 is invalid"),
+            ("empty", lambda summary: summary["final_adjudicator"].__setitem__("provider", ""), "provider must be a non-empty string"),
+            ("unknown", lambda summary: summary["final_adjudicator"].__setitem__("unverified", True), "has unknown fields: unverified"),
+        )
+        for name, mutate, expected in cases:
+            with self.subTest(case=name):
+                trial = magi_product(self.root / f"final-{name}", req)
+                summary_path = trial / "product-summary.json"
+                summary = json.loads(summary_path.read_text())
+                mutate(summary)
+                identity = {key: value for key, value in summary.items() if key != "product_sha256"}
+                summary["product_sha256"] = CONTRACTS.sha256_bytes(
+                    json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+                )
+                write(summary_path, summary)
+                packet = self.build(req, tr, magi=trial)
+                self.assertEqual(packet["product_evidence"]["status"], "invalid")
+                self.assertTrue(any(expected in error for error in packet["product_evidence"]["errors"]))
+
+    def test_magi_bound_artifact_tampering_fails_closed(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        cases = (
+            ("assignment", lambda trial, summary: trial / summary["assignment_plan_ref"], "assignment plan digest mismatch"),
+            ("dossier", lambda trial, summary: trial / summary["seats"][0]["dossier_ref"], "dossier digest mismatch"),
+            ("review", lambda trial, summary: trial / summary["cross_reviews"][0]["artifact_ref"], "artifact digest mismatch"),
+            ("coverage", lambda trial, summary: trial / summary["evidence_coverage_ref"], "coverage receipt digest mismatch"),
+            ("reduction", lambda trial, summary: trial / summary["residual_reduction_ref"], "residual-reduction receipt digest mismatch"),
+            ("verdict", lambda trial, summary: trial / summary["final_verdict_ref"], "final verdict digest mismatch"),
+        )
+        for name, select, expected in cases:
+            with self.subTest(artifact=name):
+                trial = magi_product(self.root / f"tamper-{name}", req)
+                summary = json.loads((trial / "product-summary.json").read_text())
+                artifact = select(trial, summary)
+                artifact.write_text(artifact.read_text() + "\n", encoding="utf-8")
+                packet = self.build(req, tr, magi=trial)
+                self.assertEqual(packet["product_evidence"]["status"], "invalid")
+                self.assertTrue(any(expected in error for error in packet["product_evidence"]["errors"]))
+
+    def test_magi_artifact_path_escape_fails_closed(self) -> None:
+        req = request(change_class="architecture")
+        trial = magi_product(self.root, req)
+        summary_path = trial / "product-summary.json"
+        summary = json.loads(summary_path.read_text())
+        summary["residual_reduction_ref"] = "../outside.json"
+        summary["product_sha256"] = digest_value(
+            {key: value for key, value in summary.items() if key != "product_sha256"}
+        )
+        write(summary_path, summary)
+        packet = self.build(req, trace(req, instrument="MAGI"), magi=trial)
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+        self.assertTrue(
+            any("residual-reduction receipt ref escapes" in error for error in packet["product_evidence"]["errors"])
+        )
+
+    def test_magi_execution_receipt_output_and_assignment_drift_fail_closed(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        cases = (
+            ("output", "output_artifact_sha256", "sha256:" + "f" * 64, "output_artifact_sha256 does not match"),
+            ("service", "service", "wrong-seat", "service does not match the assignment plan"),
+            ("image", "image_digest", "sha256:" + "f" * 64, "image_digest does not match the assignment plan"),
+        )
+        for name, field, value, expected in cases:
+            with self.subTest(case=name):
+                trial = magi_product(self.root / f"receipt-{name}", req)
+                summary_path = trial / "product-summary.json"
+                summary = json.loads(summary_path.read_text())
+                receipt_path = trial / summary["cross_reviews"][0]["reviewer_execution_receipt_ref"]
+                receipt = json.loads(receipt_path.read_text())
+                receipt[field] = value
+                write(receipt_path, receipt)
+                summary["cross_reviews"][0]["reviewer_execution_receipt_sha256"] = CONTRACTS.sha256_bytes(
+                    receipt_path.read_bytes()
+                )
+                summary["product_sha256"] = digest_value(
+                    {key: item for key, item in summary.items() if key != "product_sha256"}
+                )
+                write(summary_path, summary)
+                packet = self.build(req, tr, magi=trial)
+                self.assertEqual(packet["product_evidence"]["status"], "invalid")
+                self.assertTrue(any(expected in error for error in packet["product_evidence"]["errors"]))
+
+    def test_magi_malformed_assignment_and_reduction_return_invalid_not_exception(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        for name, reference_field, mutate, expected in (
+            (
+                "assignment",
+                "assignment_plan_ref",
+                lambda value: value.__setitem__("cross_review_obligations", []),
+                "must contain all six directed reviews",
+            ),
+            (
+                "reduction",
+                "residual_reduction_ref",
+                lambda value: value.__setitem__("seat_residual_source_refs", {"bad": True}),
+                "must be a sorted unique string array",
+            ),
+        ):
+            with self.subTest(case=name):
+                trial = magi_product(self.root / f"malformed-{name}", req)
+                summary_path = trial / "product-summary.json"
+                summary = json.loads(summary_path.read_text())
+                artifact = trial / summary[reference_field]
+                value = json.loads(artifact.read_text())
+                mutate(value)
+                binding = "plan_binding_sha256" if name == "assignment" else "binding_sha256"
+                value[binding] = digest_value(
+                    {key: item for key, item in value.items() if key != binding}
+                )
+                write(artifact, value)
+                digest_field = reference_field.removesuffix("_ref") + "_sha256"
+                summary[digest_field] = CONTRACTS.sha256_bytes(artifact.read_bytes())
+                summary["product_sha256"] = digest_value(
+                    {key: item for key, item in summary.items() if key != "product_sha256"}
+                )
+                write(summary_path, summary)
+                packet = self.build(req, tr, magi=trial)
+                self.assertEqual(packet["product_evidence"]["status"], "invalid")
+                self.assertTrue(any(expected in error for error in packet["product_evidence"]["errors"]))
 
     def test_wrong_atomic_product_kind_is_rejected(self) -> None:
         req = request(change_class="architecture")

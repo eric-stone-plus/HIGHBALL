@@ -1,7 +1,7 @@
 # Residual Trial Scoring
 
 > Trial scoring compares residual yield against closure, manifest strength,
-> risk, and cost. It does not estimate truth probability.
+> risk, and cost. It does not estimate a correctness probability.
 
 ## 1. Purpose
 
@@ -10,13 +10,14 @@ runs comparable.
 
 The score asks whether a route produced enough inspectable residual evidence to
 justify using the same route again, escalating, or rerouting to a cheaper or
-more direct baseline. This is the engineering response to the multi-agent
-debate literature: debate must earn its cost by surfacing higher-quality
-residuals than self-correction, direct evidence, or human review.
+more direct baseline. A route must earn its cost by surfacing higher-quality
+residuals than a declared self-correction, direct-evidence, or human-review
+baseline.
 
 ## 2. Inputs
 
-`bin/score-residual-trial.py` consumes a RASHOMON residual trace, including the
+`bin/score-residual-trial.py` consumes a RASHOMON Trace `1.1` compatibility
+artifact, including the
 optional `trial_manifest`. It reuses `bin/measure-residual-trace.py` and derives:
 
 - Residual Yield: how much material residual evidence was preserved.
@@ -29,7 +30,8 @@ optional `trial_manifest`. It reuses `bin/measure-residual-trace.py` and derives
 
 The tool emits:
 
-- `evidence_score`: bounded profile score in `[0, 1]`; not a truth probability.
+- `evidence_score`: bounded route score in `[0, 1]`; not a calibrated
+  correctness probability.
 - `recommendation`: `adopt`, `review`, `reroute`, or `block`.
 - `residual_yield`: residual-yield component.
 - `closure_strength`: closure component.
@@ -47,27 +49,26 @@ The tool emits:
 - `block`: the trace itself contains blocking risk.
 
 Same-model and same-family runs can score well enough for review, but they
-remain stability evidence rather than independent confirmation. This is
-intentional: the score prevents same-model agreement from being laundered into
-truth.
+remain stability evidence rather than independent confirmation. The score does
+not convert same-model agreement into a correctness claim.
 
 ## 5. Non-Goals
 
 Trial scoring does not:
 
-- prove truth
+- establish correctness beyond the referenced evidence
 - authorize action
 - replace Protected-Write Guard or Authorization Gate
 - compare semantic answer quality
 - reward high residual count without evidence or closure
-- treat expensive debate as better merely because it used more agents
+- treat an expensive route as better merely because it used more workers
 
 It is a calibration tool for deciding whether the route was worth the cost.
 
 ## 6. Baseline Obligation
 
 Same-model QUINTE, MAGI, self-refinement, and direct verification are different
-evidence routes, not ranked rituals. A scored residual trial is incomplete for
+evidence routes. A scored residual trial is incomplete for
 route-policy use unless the cohort can eventually compare it against at least
 one cheaper or stronger baseline for the same action boundary:
 
@@ -108,4 +109,4 @@ implied, record it in a residual outcome ledger.
 
 Outcome ledgers are specified in `specs/residual-outcome-ledger.md`. They
 provide empirical feedback for future route policy without converting the score
-into truth probability.
+into a calibrated correctness probability.

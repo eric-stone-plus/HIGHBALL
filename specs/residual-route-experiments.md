@@ -19,9 +19,8 @@ The route experiment layer adds two artifacts:
 - A route experiment review compares the manifest against the actual
   calibration report, baseline report, and outcome ledger.
 
-This is the engineering answer to the academic critique that homogeneous
-multi-agent debate can look persuasive while failing against cheaper
-self-correction, direct evidence, or properly designed baselines.
+This prevents a homogeneous route from being promoted without comparison to a
+declared self-correction, direct-evidence, or other same-boundary baseline.
 
 ## 2. Manifest
 
@@ -96,7 +95,7 @@ Route experiment manifests and reviews do not:
   actions
 - change Product Router bindings
 - mutate route policy
-- prove truth
+- establish correctness beyond the referenced experiment evidence
 - replace route calibration, baseline comparison, outcome ledgers, policy
   reports, or route change proposals
 

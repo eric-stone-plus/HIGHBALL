@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate RASHOMON residual traces embedded in verdict markdown.
+"""Validate RASHOMON Trace 1.1 compatibility artifacts in JSON or markdown.
 
 The validator intentionally uses only the Python standard library. It performs
 the schema subset HIGHBALL needs at runtime and enforces protected-action

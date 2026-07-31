@@ -11,17 +11,18 @@ three technical boundaries and nothing inside an agent runtime:
   container/runtime configuration, protocol docs, and control scripts are all
   inside this boundary.
 
-RASHOMON remains the optional theory layer. It does not dispatch work or grant
-permission.
+Some Trace `1.1` artifacts retain the `RASHOMON` namespace for schema
+compatibility. HIGHBALL treats that name as format metadata only; it has no
+routing, authorization, or execution semantics.
 
 ## Product Boundaries
 
 HIGHBALL treats both review runtimes as opaque products:
 
-- **QUINTE** is a single-family adversarial review runtime. Its five parties,
-  Counterpart Arbiter, and Primary Arbiter must all use one declared model
-  family. HIGHBALL binds one completed Result `2.1` and Manifest `2.0`; it never
-  invokes a lane, adapter, provider, or arbiter directly.
+- **QUINTE** is a single-family review runtime. All five lane bindings and both
+  finalization bindings must use one declared model family. HIGHBALL binds one
+  completed Result `2.1` and Manifest `2.0`; it never invokes an internal
+  command, adapter, provider, or model endpoint.
 - **MAGI** is the high-intensity triadic cross-verification runtime. Three
   isolated Hermes profiles each produce a thesis and a same-family QUINTE
   dossier. After freezing, six anonymous directed reviews and a final
@@ -30,8 +31,8 @@ HIGHBALL treats both review runtimes as opaque products:
   never a trace alone. Only a final `PASS` can authorize action; `BLOCK` and
   `ESCALATE` remain valid completed products but force the packet to block.
 
-Profile diversity and model-family diversity are separate evidence. Neither
-HIGHBALL nor MAGI may describe three profiles as three independent models.
+Profile digests and model-family bindings are separate provenance fields.
+Neither field is a calibrated correctness or statistical-independence metric.
 
 ## Routing
 

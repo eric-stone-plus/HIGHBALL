@@ -1,8 +1,8 @@
 # Residual Outcome Ledger
 
 > Outcome ledgers record follow-up evidence after a trace, Action Packet, or
-> route calibration report. They are empirical feedback artifacts, not truth
-> oracles.
+> route calibration report. They are empirical feedback artifacts, not
+> authorization or calibrated correctness estimates.
 
 ## 1. Purpose
 
@@ -31,7 +31,7 @@ Each entry must reference at least one of these artifacts.
 - `inconclusive`: follow-up evidence was gathered but does not resolve the question.
 - `regression`: later behavior regressed after a previously supported outcome.
 
-These are observation classes, not truth probabilities.
+These are observation classes, not calibrated correctness probabilities.
 
 ## 4. Evidence Types
 
@@ -77,7 +77,7 @@ calibration reports to make the record look cleaner.
 Outcome ledgers do not:
 
 - authorize action
-- prove philosophical truth
+- establish correctness beyond the referenced observations
 - replace residual traces
 - replace Action Packets
 - replace route calibration reports

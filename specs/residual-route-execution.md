@@ -56,9 +56,9 @@ The report derives an execution gate:
 - `block`: any packet is invalid or contains blocked execution evidence.
 - `insufficient`: no packets, or no packets requiring execution evidence, were available.
 
-These gates are route-level reliability signals. They are not truth estimates.
-They say whether the route can be operationally trusted to produce the evidence
-its own boundary contract requires.
+These gates are route-level reliability signals, not calibrated correctness
+estimates. They report whether the route produced the evidence required by its
+boundary contract.
 
 ## 4. Policy Use
 
@@ -98,7 +98,7 @@ Route execution reports do not:
 - authorize protected writes or irreversible operations
 - replace or interpret QUINTE or MAGI internal execution records
 - replace Action Packets
-- prove truth
+- establish correctness beyond the referenced execution evidence
 - mutate route policy
 
 They make operational route reliability visible enough to affect reviewed

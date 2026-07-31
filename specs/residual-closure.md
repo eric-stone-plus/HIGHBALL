@@ -17,9 +17,9 @@ surface files, especially:
 - Hermes profile files such as `SOUL.md`, `USER.md`, `MEMORY.md`, `SKILL.md`,
   and `POSTMORTEM.md`
 
-HIGHBALL does not decide whether the original finding is true. QUINTE, direct
-runtime evidence, or a human reviewer supplies that judgment. HIGHBALL checks
-whether the finding can safely cross an action boundary.
+HIGHBALL does not re-evaluate the original finding. QUINTE, direct runtime
+evidence, or a human review supplies that result. HIGHBALL checks whether the
+record satisfies the configured action-boundary contract.
 
 Route selection before closure is specified in `specs/residual-routing.md`.
 The router decides which instrument should produce the evidence; closure checks
@@ -48,8 +48,8 @@ verdict is closed.
 - `waived`: user or designated human reviewer explicitly accepts the risk with reason and scope. It may cross within the waiver scope.
 - `not_applicable`: finding does not affect the current action boundary. It may cross within the stated scope.
 
-Language-model agreement alone cannot set `closed`. A model verdict may propose
-closure, but the closure must cite external evidence or an explicit waiver.
+A model output alone cannot set `closed`. Closure must cite external evidence
+or an explicit waiver.
 
 ## 4. Residual Closure Ledger
 
@@ -82,14 +82,15 @@ ledger entry for each `HIGH`, `CRITICAL`, `P0`, or action-blocking residual:
 }
 ```
 
-The canonical schema is RASHOMON `schemas/residual-trace.schema.json`.
+The canonical schema retains the `RASHOMON` namespace for trace-format
+compatibility. The name has no routing or authorization semantics.
 HIGHBALL's reusable validator is `bin/validate-residual-trace.py`.
 The validator accepts both markdown verdicts with fenced JSON blocks and raw
 JSON trace artifacts.
 The companion measurement tool is `bin/measure-residual-trace.py`; it reports
 advisory residual quality metrics without replacing Protected-Write Guard's block/pass
 closure rule.
-When a trace includes RASHOMON `trial_manifest`, the measurement tool also
+When a compatible trace includes `trial_manifest`, the measurement tool also
 reports whether the run had independent first-pass artifacts, perturbation axes,
 same-model or same-family correlation, contamination risks, and cost fields.
 Strict-boundary traces without a manifest are structurally valid but should be
@@ -142,11 +143,11 @@ archives, but broad enough to catch the live target file.
 
 Residual Closure does not:
 
-- create a new debate participant
+- create an additional product worker
 - replace or inspect the QUINTE scheduler and verdict contract
 - choose MAGI or QUINTE routes
 - authorize `git push`
-- prove truth in philosophical or open-ended domains
+- establish correctness outside the cited evidence and scope
 - require every low-severity note to be fixed
 
 It only prevents a high-risk discovered issue from being laundered into
@@ -154,9 +155,9 @@ permission to modify protected public surfaces.
 
 ## 8. Rationale
 
-This contract follows the engineering lesson already visible in historical
-QUINTE audits: a system can detect an error, classify it correctly, and still
-leave the erroneous public artifact unchanged. That is a broken feedback loop.
+Historical product runs show that detection and classification can succeed
+while the affected artifact remains unchanged. That is an incomplete control
+loop.
 
 Residual Closure makes the loop explicit: discover the issue, classify it,
 correct, block, or waive it, verify the closure, and only then act.

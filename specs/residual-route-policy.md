@@ -114,7 +114,7 @@ Route policy reports do not:
 - change Product Router bindings
 - authorize protected writes, push, deployment, legal, financial, or deletion
   actions
-- prove truth
+- establish correctness beyond the referenced evidence chain
 - replace Action Packets
 - replace outcome ledgers
 - replace route experiment manifests or reviews

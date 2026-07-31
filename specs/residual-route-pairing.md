@@ -15,10 +15,9 @@ independent model aggregation. A QUINTE trace may reveal useful residuals, but
 it still has to beat direct evidence, human review, MAGI, or other same-boundary
 routes on the evidence it actually produced.
 
-The pairing layer deliberately avoids LLM-as-judge voting. Pairwise preference
-judges are vulnerable to position bias, non-transitivity, and comparative
-framing effects. HIGHBALL pairing instead uses the existing residual trace
-schema, scorer, and evidence-chain validation.
+The pairing layer does not use a model preference vote. HIGHBALL pairing uses
+the existing residual trace schema, deterministic scorer, and evidence-chain
+validation.
 
 ## 2. Pair Manifest
 
@@ -106,7 +105,7 @@ Route pairing reports do not:
 - authorize protected writes, push, deployment, legal, financial, or deletion actions
 - modify Product Router routing
 - promote a route policy
-- prove truth
+- establish correctness beyond the paired evidence
 - replace route calibration, baseline comparison, outcome ledgers, experiment reviews, policy reports, or route change proposals
 
 They make same-question route comparisons inspectable enough for later

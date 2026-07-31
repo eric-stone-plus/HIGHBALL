@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Measure residual trace quality without asserting truth probability."""
+"""Measure residual trace quality without asserting correctness probability."""
 
 from __future__ import annotations
 

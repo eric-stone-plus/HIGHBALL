@@ -24,8 +24,9 @@ Cross-task, moved, tampered, stale, or scope-drifted products block.
 
 `--quinte-result` binds one canonical `result.json`. HIGHBALL validates the
 active QUINTE contract, completed status, manifest/result/brief digests, run
-identity, installed runtime digest, `quinte inspect`, five party perspectives,
-and all seven same-family role bindings. HIGHBALL does not schedule a lane.
+identity, installed runtime digest, `quinte inspect`, five R1/R2 lane artifact
+pairs, and all seven same-family route bindings. HIGHBALL does not schedule a
+lane.
 
 ## MAGI Binding
 

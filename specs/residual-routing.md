@@ -1,7 +1,7 @@
 # Residual Routing
 
 HIGHBALL chooses the next evidence product before work crosses an action
-boundary. It does not decide truth.
+boundary. It does not re-evaluate product content.
 
 ## Routes
 

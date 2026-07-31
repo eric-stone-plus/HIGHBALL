@@ -54,7 +54,7 @@ Route change proposals do not:
 - change live host routing
 - authorize protected writes, push, deletion, deployment, legal, or financial
   actions
-- prove truth
+- establish correctness beyond the referenced evidence
 - replace route policy reports
 
 They are audit artifacts for future maintainer decisions.

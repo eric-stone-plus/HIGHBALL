@@ -22,13 +22,14 @@ are not acceptable for protected dispatch because they hide policy drift.
 
 ## QUINTE
 
-QUINTE is one single-family adversarial review product. The scheduler alone
-owns parties, arbiters, adapters, models, credentials, phases, concurrency,
-retry, pacing, artifacts, cleanup, and finalization. HIGHBALL supplies only
-product-level inputs and consumes the completed product-level outcome.
+QUINTE is one single-family review product. Its scheduler alone owns internal
+commands, adapters, models, credentials, phases, concurrency, retry, pacing,
+artifacts, cleanup, and finalization. HIGHBALL supplies only product-level
+inputs and consumes the completed product-level outcome.
 
-HIGHBALL must not fan out R2, retry a lane, substitute a provider, invoke an
-arbiter, repair an artifact, or infer success from partial progress.
+HIGHBALL must not fan out a phase, retry a lane, substitute a provider, invoke
+an internal finalizer, repair an artifact, or infer success from partial
+progress.
 
 ## MAGI
 
@@ -43,7 +44,7 @@ Packet independently permits action only when the final decision is `PASS`.
 
 A residual trace without a verified atomic MAGI product is insufficient. A
 missing MAGI entrypoint fails closed into human review or block; HIGHBALL must
-not simulate MAGI with QUINTE parties.
+not reconstruct MAGI from QUINTE internals.
 
 ## Outer Enforcement
 
