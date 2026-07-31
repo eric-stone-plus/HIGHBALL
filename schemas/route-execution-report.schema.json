@@ -27,7 +27,7 @@
   "properties": {
     "execution_report_version": {
       "type": "string",
-      "const": "1.1"
+      "const": "2.0"
     },
     "route_group": {
       "type": "string",
@@ -142,8 +142,9 @@
         "action_decision",
         "execution_required",
         "execution_status",
-        "quinte_run_id",
-        "quinte_result_sha256",
+        "product_kind",
+        "product_id",
+        "product_sha256",
         "action_binding_sha256",
         "errors"
       ],
@@ -186,8 +187,9 @@
             "invalid"
           ]
         },
-        "quinte_run_id": { "type": ["string", "null"], "minLength": 1 },
-        "quinte_result_sha256": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+        "product_kind": { "type": ["string", "null"], "enum": ["QUINTE", "MAGI", null] },
+        "product_id": { "type": ["string", "null"], "minLength": 1 },
+        "product_sha256": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
         "action_binding_sha256": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
         "errors": {
           "type": "array",

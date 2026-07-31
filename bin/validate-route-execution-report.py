@@ -56,8 +56,9 @@ PACKET_SUMMARY_FIELDS = {
     "action_decision",
     "execution_required",
     "execution_status",
-    "quinte_run_id",
-    "quinte_result_sha256",
+    "product_kind",
+    "product_id",
+    "product_sha256",
     "action_binding_sha256",
     "errors",
 }
@@ -149,7 +150,7 @@ def validate_packet_summary(index: int, value: Any, errors: list[str]) -> dict[s
         errors.append(f"{prefix}.execution_required must be boolean")
     if item.get("execution_status") not in EXECUTION_STATUSES:
         errors.append(f"{prefix}.execution_status is invalid")
-    for field in ("quinte_run_id", "quinte_result_sha256", "action_binding_sha256"):
+    for field in ("product_kind", "product_id", "product_sha256", "action_binding_sha256"):
         if item.get(field) is not None and not is_nonempty_string(item.get(field)):
             errors.append(f"{prefix}.{field} must be a non-empty string or null")
     if not is_string_list(item.get("errors")):

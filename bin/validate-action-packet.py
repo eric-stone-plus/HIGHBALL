@@ -31,7 +31,7 @@ CONTRACTS = load_module("highball_contracts", ROOT / "bin" / "highball-contracts
 ROUTER = load_module("route_residual_action", ROOT / "bin" / "route-residual-action.py")
 TRACE_VALIDATOR = load_module("validate_residual_trace", ROOT / "bin" / "validate-residual-trace.py")
 MEASURE = load_module("measure_residual_trace", ROOT / "bin" / "measure-residual-trace.py")
-PRODUCT = load_module("verify_quinte_product", ROOT / "bin" / "verify-quinte-product.py")
+PRODUCT = load_module("verify_product", ROOT / "bin" / "verify-product.py")
 
 
 TOP_LEVEL_FIELDS = {
@@ -41,7 +41,7 @@ TOP_LEVEL_FIELDS = {
     "trace",
     "validation",
     "quality",
-    "execution_evidence",
+    "product_evidence",
     "authorization",
     "action_decision",
     "decision_reasons",
@@ -52,7 +52,7 @@ ROUTE_DECISION_FIELDS = {
     "reason",
     "required_artifacts",
     "residual_trace_required",
-    "kengen_authorization_required",
+    "authorization_required",
 }
 VALIDATION_FIELDS = {"status", "errors", "blocks"}
 QUALITY_FIELDS = {
@@ -83,11 +83,11 @@ QUALITY_FIELDS = {
     "quality_gate",
     "warnings",
 }
-EXECUTION_EVIDENCE_FIELDS = {
+PRODUCT_EVIDENCE_FIELDS = {
     "required",
     "status",
     "binding",
-    "quinte_outcome",
+    "product",
     "errors",
 }
 AUTHORIZATION_FIELDS = {
@@ -102,14 +102,15 @@ AUTHORIZATION_FIELDS = {
     "expires_at",
     "errors",
 }
-BINDINGS = {"atomic_quinte_outcome", "not_applicable"}
-QUINTE_OUTCOME_FIELDS = {
-    "result_ref",
-    "run_id",
+BINDINGS = {"atomic_quinte_product", "atomic_magi_product", "not_applicable"}
+PRODUCT_OUTCOME_FIELDS = {
+    "product_ref",
+    "product_kind",
+    "product_version",
+    "product_sha256",
+    "product_id",
     "status",
-    "result_version",
-    "result_sha256",
-    "brief_sha256",
+    "decision",
     "question",
     "action_scope",
     "affected_paths",
@@ -191,7 +192,7 @@ def decide(
     trace: dict[str, Any],
     validation: dict[str, Any],
     quality: dict[str, Any],
-    execution_evidence: dict[str, Any],
+    product_evidence: dict[str, Any],
     authorization: dict[str, Any],
 ) -> tuple[str, list[str], list[str]]:
     decision = "pass"
@@ -218,14 +219,22 @@ def decide(
         block("trace contains validator block findings", "resolve the trace's blocking decision or residuals")
     if route == "block":
         block("route decision is block", "record the block or provide corrected evidence")
-    status = execution_evidence.get("status")
-    if execution_evidence.get("required") and status != "complete":
+    status = product_evidence.get("status")
+    if product_evidence.get("required") and status != "complete":
         block(
-            f"required atomic QUINTE product outcome is {status}",
-            "attach a current, completed, request-bound QUINTE result.json",
+            f"required atomic product outcome is {status}",
+            "attach a current, completed, request-bound selected product",
         )
     elif status in {"invalid", "blocked", "degraded"}:
-        block(f"QUINTE product outcome is {status}", "repair or regenerate the bound QUINTE product outcome")
+        block(f"product outcome is {status}", "repair or regenerate the bound product outcome")
+    product = product_evidence.get("product")
+    if status == "complete" and isinstance(product, dict):
+        product_decision = product.get("decision")
+        if product_decision != "PASS":
+            block(
+                f"{product.get('product_kind', route)} product decision is {product_decision}",
+                "resolve the product's block or escalation before action",
+            )
     if trace.get("highball_decision") in {"block", "escalate"}:
         block(
             f"trace highball_decision is {trace.get('highball_decision')}",
@@ -254,15 +263,15 @@ def decide(
         block("trace contract version is not active", "produce an active residual trace contract")
     if trace.get("action_binding_sha256") != CONTRACTS.action_binding_sha256(request):
         block("trace action binding differs from the route request", "bind the trace to this action")
-    if route_decision.get("kengen_authorization_required") and authorization.get("status") != "authorized":
+    if route_decision.get("authorization_required") and authorization.get("status") != "authorized":
         block(
-            f"required KENGEN authorization is {authorization.get('status')}",
-            "attach a current, user-issued, action-bound KENGEN authorization artifact",
+            f"required authorization is {authorization.get('status')}",
+            "attach a current, user-issued, action-bound authorization artifact",
         )
     elif authorization.get("status") == "invalid":
-        block("KENGEN authorization is invalid", "replace the invalid authorization artifact")
+        block("authorization is invalid", "replace the invalid authorization artifact")
     if not reasons:
-        reasons.append("route, trace, execution evidence, and authorization are consistent")
+        reasons.append("route, trace, product evidence, and authorization are consistent")
     return decision, reasons, next_steps
 
 
@@ -306,8 +315,8 @@ def validate_shape(packet: Any) -> list[str]:
             errors.append("route_decision.required_artifacts must be an array of strings")
         if not isinstance(route_decision.get("residual_trace_required"), bool):
             errors.append("route_decision.residual_trace_required must be boolean")
-        if not isinstance(route_decision.get("kengen_authorization_required"), bool):
-            errors.append("route_decision.kengen_authorization_required must be boolean")
+        if not isinstance(route_decision.get("authorization_required"), bool):
+            errors.append("route_decision.authorization_required must be boolean")
 
     trace = packet.get("trace")
     if not isinstance(trace, dict):
@@ -348,56 +357,62 @@ def validate_shape(packet: Any) -> list[str]:
         if missing_quality:
             errors.append(f"quality missing fields: {', '.join(missing_quality)}")
 
-    execution = packet.get("execution_evidence")
+    execution = packet.get("product_evidence")
     if not isinstance(execution, dict):
-        errors.append("execution_evidence must be an object")
+        errors.append("product_evidence must be an object")
     else:
-        unknown_execution = sorted(set(execution) - EXECUTION_EVIDENCE_FIELDS)
-        missing_execution = sorted(EXECUTION_EVIDENCE_FIELDS - set(execution))
+        unknown_execution = sorted(set(execution) - PRODUCT_EVIDENCE_FIELDS)
+        missing_execution = sorted(PRODUCT_EVIDENCE_FIELDS - set(execution))
         if unknown_execution:
-            errors.append(f"execution_evidence unknown fields: {', '.join(unknown_execution)}")
+            errors.append(f"product_evidence unknown fields: {', '.join(unknown_execution)}")
         if missing_execution:
-            errors.append(f"execution_evidence missing fields: {', '.join(missing_execution)}")
+            errors.append(f"product_evidence missing fields: {', '.join(missing_execution)}")
         if not isinstance(execution.get("required"), bool):
-            errors.append("execution_evidence.required must be boolean")
+            errors.append("product_evidence.required must be boolean")
         if execution.get("status") not in EXECUTION_STATUSES:
-            errors.append("execution_evidence.status is invalid")
+            errors.append("product_evidence.status is invalid")
         if execution.get("binding") not in BINDINGS:
-            errors.append("execution_evidence.binding is invalid")
-        outcome = execution.get("quinte_outcome")
+            errors.append("product_evidence.binding is invalid")
+        outcome = execution.get("product")
         if outcome is not None:
             if not isinstance(outcome, dict):
-                errors.append("execution_evidence.quinte_outcome must be an object or null")
+                errors.append("product_evidence.product must be an object or null")
             else:
-                unknown_outcome = sorted(set(outcome) - QUINTE_OUTCOME_FIELDS)
-                missing_outcome = sorted(QUINTE_OUTCOME_FIELDS - set(outcome))
+                unknown_outcome = sorted(set(outcome) - PRODUCT_OUTCOME_FIELDS)
+                missing_outcome = sorted(PRODUCT_OUTCOME_FIELDS - set(outcome))
                 if unknown_outcome:
                     errors.append(
-                        f"execution_evidence.quinte_outcome unknown fields: {', '.join(unknown_outcome)}"
+                        f"product_evidence.product unknown fields: {', '.join(unknown_outcome)}"
                     )
                 if missing_outcome:
                     errors.append(
-                        f"execution_evidence.quinte_outcome missing fields: {', '.join(missing_outcome)}"
+                        f"product_evidence.product missing fields: {', '.join(missing_outcome)}"
                     )
-                if not isinstance(outcome.get("result_ref"), str) or not outcome.get("result_ref", "").strip():
-                    errors.append("execution_evidence.quinte_outcome.result_ref must be a non-empty string")
-                if not isinstance(outcome.get("run_id"), str):
-                    errors.append("execution_evidence.quinte_outcome.run_id must be a string")
-                if not isinstance(outcome.get("status"), str):
-                    errors.append("execution_evidence.quinte_outcome.status must be a string")
-                if outcome.get("result_version") != CONTRACTS.QUINTE_RESULT_VERSION:
-                    errors.append("execution_evidence.quinte_outcome.result_version is unsupported")
-                for field in ("result_sha256", "brief_sha256", "action_binding_sha256"):
+                for field in (
+                    "product_ref", "product_kind", "product_version", "product_id",
+                    "status", "decision",
+                ):
+                    if not isinstance(outcome.get(field), str) or not outcome.get(field, "").strip():
+                        errors.append(f"product_evidence.product.{field} must be a non-empty string")
+                if outcome.get("product_kind") not in {"QUINTE", "MAGI"}:
+                    errors.append("product_evidence.product.product_kind is invalid")
+                elif outcome.get("product_kind") == "QUINTE" and outcome.get("decision") != "PASS":
+                    errors.append("QUINTE product decision must be PASS")
+                elif outcome.get("product_kind") == "MAGI" and outcome.get("decision") not in {
+                    "PASS", "BLOCK", "ESCALATE"
+                }:
+                    errors.append("MAGI product decision is invalid")
+                for field in ("product_sha256", "action_binding_sha256"):
                     if not CONTRACTS.is_digest(outcome.get(field)):
-                        errors.append(f"execution_evidence.quinte_outcome.{field} is invalid")
+                        errors.append(f"product_evidence.product.{field} is invalid")
                 if not isinstance(outcome.get("question"), str) or not outcome.get("question", "").strip():
-                    errors.append("execution_evidence.quinte_outcome.question must be a non-empty string")
+                    errors.append("product_evidence.product.question must be a non-empty string")
                 if outcome.get("action_scope") is not None and not isinstance(outcome.get("action_scope"), str):
-                    errors.append("execution_evidence.quinte_outcome.action_scope must be a string or null")
+                    errors.append("product_evidence.product.action_scope must be a string or null")
                 if not is_string_list(outcome.get("affected_paths")):
-                    errors.append("execution_evidence.quinte_outcome.affected_paths must be an array of strings")
+                    errors.append("product_evidence.product.affected_paths must be an array of strings")
         if not is_string_list(execution.get("errors")):
-            errors.append("execution_evidence.errors must be an array of strings")
+            errors.append("product_evidence.errors must be an array of strings")
 
     authorization = packet.get("authorization")
     if not isinstance(authorization, dict):
@@ -436,7 +451,7 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
     trace = packet["trace"]
     validation = packet["validation"]
     quality = packet["quality"]
-    execution_evidence = packet["execution_evidence"]
+    product_evidence = packet["product_evidence"]
     authorization = packet["authorization"]
 
     expected_route = ROUTER.route_request(request)
@@ -451,28 +466,33 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
     if quality != expected_quality:
         errors.append("quality does not match derived residual trace metrics")
 
-    outcome = execution_evidence.get("quinte_outcome")
-    result_refs = []
-    if isinstance(outcome, dict) and isinstance(outcome.get("result_ref"), str):
-        result_refs = [outcome["result_ref"]]
-    expected_execution = PRODUCT.build_execution_evidence(
+    outcome = product_evidence.get("product")
+    result_refs: list[str] = []
+    trial_refs: list[str] = []
+    if isinstance(outcome, dict) and isinstance(outcome.get("product_ref"), str):
+        if outcome.get("product_kind") == "QUINTE":
+            result_refs = [outcome["product_ref"]]
+        elif outcome.get("product_kind") == "MAGI":
+            trial_refs = [outcome["product_ref"]]
+    expected_execution = PRODUCT.build_product_evidence(
         request,
         route_decision,
         result_refs,
+        trial_refs,
         base_dir=base_dir,
     )
-    if execution_evidence != expected_execution:
-        errors.append("execution_evidence does not match derived product/dispatch evidence")
+    if product_evidence != expected_execution:
+        errors.append("product_evidence does not match derived product evidence")
 
     authorization_ref = authorization.get("artifact_ref")
-    expected_authorization = CONTRACTS.summarize_kengen_artifact(
+    expected_authorization = CONTRACTS.summarize_authorization_artifact(
         authorization_ref if isinstance(authorization_ref, str) else None,
         request,
         base_dir=base_dir,
-        required=route_decision.get("kengen_authorization_required", False),
+        required=route_decision.get("authorization_required", False),
     )
     if authorization != expected_authorization:
-        errors.append("authorization does not match the bound KENGEN artifact")
+        errors.append("authorization does not match the bound authorization artifact")
 
     action_decision, decision_reasons, required_next_steps = decide(
         request,
@@ -480,7 +500,7 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
         trace,
         validation,
         quality,
-        execution_evidence,
+        product_evidence,
         authorization,
     )
     if packet["action_decision"] != action_decision:

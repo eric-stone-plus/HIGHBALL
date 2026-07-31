@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# BANNIN protected-write guard. Every uncertainty fails closed.
+# HIGHBALL protected-write guard. Every uncertainty fails closed.
 
 set -euo pipefail
 
@@ -20,25 +20,25 @@ log="${2:-}"
 [ "${3:-}" = "--action-packet" ] || usage
 packet="${4:-}"
 [ -n "$log" ] && [ -n "$packet" ] || usage
-[ -f "$log" ] || { echo "[BANNIN] ERROR: log not found: $log" >&2; exit 2; }
-[ -r "$log" ] || { echo "[BANNIN] ERROR: log is not readable: $log" >&2; exit 2; }
+[ -f "$log" ] || { echo "[Protected-Write Guard] ERROR: log not found: $log" >&2; exit 2; }
+[ -r "$log" ] || { echo "[Protected-Write Guard] ERROR: log is not readable: $log" >&2; exit 2; }
 
 if ! has_arch_critical_write "$log"; then
-  echo "[BANNIN] no protected engineering write in log"
+  echo "[Protected-Write Guard] no protected engineering write in log"
   exit 0
 fi
 
-echo "[BANNIN] protected engineering write detected"
+echo "[Protected-Write Guard] protected engineering write detected"
 validator="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/validate-action-packet.py"
-[ -f "$validator" ] || { echo "[BANNIN] BLOCK: Action Packet validator missing" >&2; exit 1; }
-[ -f "$packet" ] || { echo "[BANNIN] BLOCK: bound Action Packet missing" >&2; exit 1; }
+[ -f "$validator" ] || { echo "[Protected-Write Guard] BLOCK: Action Packet validator missing" >&2; exit 1; }
+[ -f "$packet" ] || { echo "[Protected-Write Guard] BLOCK: bound Action Packet missing" >&2; exit 1; }
 
 set +e
 python3 "$validator" "$packet"
 status=$?
 set -e
 if [ "$status" -ne 0 ]; then
-  echo "[BANNIN] BLOCK: Action Packet does not authorize this protected write" >&2
+  echo "[Protected-Write Guard] BLOCK: Action Packet does not authorize this protected write" >&2
   exit 1
 fi
 
@@ -54,9 +54,9 @@ packet = json.loads(packet_path.read_text(encoding="utf-8"))
 paths = packet["route_request"]["affected_paths"]
 log = log_path.read_text(encoding="utf-8", errors="replace")
 if not paths or not all(path in log for path in paths):
-    raise SystemExit("[BANNIN] BLOCK: session log is not bound to every affected path")
+    raise SystemExit("[Protected-Write Guard] BLOCK: session log is not bound to every affected path")
 packet_digest = "sha256:" + hashlib.sha256(packet_path.read_bytes()).hexdigest()
-print(f"[BANNIN] packet binding verified: {packet_digest}")
+print(f"[Protected-Write Guard] packet binding verified: {packet_digest}")
 PY
 
 authorization_ref="$(python3 - "$packet" <<'PY'
@@ -75,7 +75,7 @@ if authorization.get("required") is True:
         path = pathlib.Path(sys.argv[1]).resolve().parent / path
     print(path.resolve())
 PY
-)" || { echo "[BANNIN] BLOCK: required KENGEN artifact is not bound" >&2; exit 1; }
+)" || { echo "[Protected-Write Guard] BLOCK: required Authorization Gate artifact is not bound" >&2; exit 1; }
 
 if [ -n "$authorization_ref" ]; then
   request_file="$(mktemp "${TMPDIR:-/tmp}/highball-request.XXXXXX")"
@@ -91,12 +91,12 @@ pathlib.Path(sys.argv[2]).write_text(
     encoding="utf-8",
 )
 PY
-  consumer="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/consume-kengen-authorization.py"
-  [ -f "$consumer" ] || { echo "[BANNIN] BLOCK: KENGEN consumer missing" >&2; exit 1; }
+  consumer="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../bin/consume-authorization.py"
+  [ -f "$consumer" ] || { echo "[Protected-Write Guard] BLOCK: Authorization Gate consumer missing" >&2; exit 1; }
   python3 "$consumer" "$request_file" "$authorization_ref" || {
-    echo "[BANNIN] BLOCK: KENGEN authorization could not be consumed" >&2
+    echo "[Protected-Write Guard] BLOCK: authorization could not be consumed" >&2
     exit 1
   }
 fi
 
-echo "[BANNIN] PASS"
+echo "[Protected-Write Guard] PASS"

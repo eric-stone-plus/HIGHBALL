@@ -25,7 +25,7 @@ CONTRACTS = load_module("highball_contracts", ROOT / "bin" / "highball-contracts
 ROUTER = load_module("route_residual_action", ROOT / "bin" / "route-residual-action.py")
 VALIDATOR = load_module("validate_residual_trace", ROOT / "bin" / "validate-residual-trace.py")
 MEASURE = load_module("measure_residual_trace", ROOT / "bin" / "measure-residual-trace.py")
-PRODUCT = load_module("verify_quinte_product", ROOT / "bin" / "verify-quinte-product.py")
+PRODUCT = load_module("verify_product", ROOT / "bin" / "verify-product.py")
 
 ROUTE_INSTRUMENT = {
     "direct-evidence": "direct-evidence",
@@ -71,7 +71,7 @@ def decide(
     trace: dict[str, Any],
     validation: dict[str, Any],
     quality: dict[str, Any],
-    execution_evidence: dict[str, Any],
+    product_evidence: dict[str, Any],
     authorization: dict[str, Any],
 ) -> tuple[str, list[str], list[str]]:
     decision = "pass"
@@ -99,17 +99,25 @@ def decide(
     if route == "block":
         block("route decision is block", "record the block or provide corrected evidence")
 
-    execution_status = execution_evidence.get("status")
-    if execution_evidence.get("required") and execution_status != "complete":
+    execution_status = product_evidence.get("status")
+    if product_evidence.get("required") and execution_status != "complete":
         block(
-            f"required atomic QUINTE product outcome is {execution_status}",
-            "attach a current, completed, request-bound QUINTE result.json",
+            f"required atomic {route} product outcome is {execution_status}",
+            f"attach a current, completed, request-bound {route} product",
         )
     elif execution_status in {"invalid", "blocked", "degraded"}:
         block(
-            f"QUINTE product outcome is {execution_status}",
-            "repair or regenerate the bound QUINTE product outcome",
+            f"{route} product outcome is {execution_status}",
+            f"repair or regenerate the bound {route} product outcome",
         )
+    product = product_evidence.get("product")
+    if execution_status == "complete" and isinstance(product, dict):
+        product_decision = product.get("decision")
+        if product_decision != "PASS":
+            block(
+                f"{product.get('product_kind', route)} product decision is {product_decision}",
+                "resolve the product's block or escalation before action",
+            )
 
     highball_decision = trace.get("highball_decision")
     if highball_decision in {"block", "escalate"}:
@@ -140,15 +148,15 @@ def decide(
         block("trace contract version is not active", "produce an active residual trace contract")
     if trace.get("action_binding_sha256") != CONTRACTS.action_binding_sha256(request):
         block("trace action binding differs from the route request", "bind the trace to this action")
-    if route_decision.get("kengen_authorization_required") and authorization.get("status") != "authorized":
+    if route_decision.get("authorization_required") and authorization.get("status") != "authorized":
         block(
-            f"required KENGEN authorization is {authorization.get('status')}",
-            "attach a current, user-issued, action-bound KENGEN authorization artifact",
+            f"required authorization is {authorization.get('status')}",
+            "attach a current, user-issued, action-bound authorization artifact",
         )
     elif authorization.get("status") == "invalid":
-        block("KENGEN authorization is invalid", "replace the invalid authorization artifact")
+        block("authorization is invalid", "replace the invalid authorization artifact")
     if not reasons:
-        reasons.append("route, trace, execution evidence, and authorization are consistent")
+        reasons.append("route, trace, product evidence, and authorization are consistent")
     return decision, reasons, next_steps
 
 
@@ -156,7 +164,8 @@ def build_packet(
     request_path: Path,
     trace_path: Path,
     quinte_results: list[Path] | None = None,
-    kengen_authorization: Path | None = None,
+    authorization: Path | None = None,
+    magi_trials: list[Path] | None = None,
 ) -> dict[str, Any]:
     request = load_route_request(request_path)
     route_decision = ROUTER.route_request(request)
@@ -164,14 +173,17 @@ def build_packet(
     validation = validate_trace(trace)
     quality = MEASURE.measure_trace(trace)
     result_refs = [str(path.resolve()) for path in (quinte_results or [])]
-    execution_evidence = PRODUCT.build_execution_evidence(request, route_decision, result_refs)
-    authorization = CONTRACTS.summarize_kengen_artifact(
-        str(kengen_authorization.resolve()) if kengen_authorization else None,
+    trial_refs = [str(path.resolve()) for path in (magi_trials or [])]
+    product_evidence = PRODUCT.build_product_evidence(
+        request, route_decision, result_refs, trial_refs
+    )
+    authorization = CONTRACTS.summarize_authorization_artifact(
+        str(authorization.resolve()) if authorization else None,
         request,
-        required=route_decision.get("kengen_authorization_required", False),
+        required=route_decision.get("authorization_required", False),
     )
     action_decision, reasons, next_steps = decide(
-        request, route_decision, trace, validation, quality, execution_evidence, authorization
+        request, route_decision, trace, validation, quality, product_evidence, authorization
     )
     return {
         "packet_version": CONTRACTS.ACTION_PACKET_VERSION,
@@ -180,7 +192,7 @@ def build_packet(
         "trace": trace,
         "validation": validation,
         "quality": quality,
-        "execution_evidence": execution_evidence,
+        "product_evidence": product_evidence,
         "authorization": authorization,
         "action_decision": action_decision,
         "decision_reasons": reasons,
@@ -200,9 +212,16 @@ def main() -> int:
         help="Current QUINTE result.json product bundle to bind",
     )
     parser.add_argument(
-        "--kengen-authorization",
+        "--magi-trial",
+        action="append",
         type=Path,
-        help="Short-lived, action-bound KENGEN authorization JSON",
+        default=[],
+        help="Current completed MAGI trial directory to bind",
+    )
+    parser.add_argument(
+        "--authorization",
+        type=Path,
+        help="Short-lived, action-bound user authorization JSON",
     )
     parser.add_argument("--pretty", action="store_true")
     args = parser.parse_args()
@@ -211,7 +230,8 @@ def main() -> int:
             args.route_request,
             args.trace_file,
             args.quinte_result,
-            args.kengen_authorization,
+            args.authorization,
+            args.magi_trial,
         )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"[HIGHBALL] ERROR: {exc}", file=sys.stderr)

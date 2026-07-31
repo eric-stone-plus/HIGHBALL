@@ -13,6 +13,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,9 +31,56 @@ def load_module(name: str, path: Path) -> Any:
 CONTRACTS = load_module("test_contracts", ROOT / "bin" / "highball-contracts.py")
 BUILDER = load_module("test_builder", ROOT / "bin" / "build-action-packet.py")
 VALIDATOR = load_module("test_validator", ROOT / "bin" / "validate-action-packet.py")
-PRODUCT = load_module("test_product", ROOT / "bin" / "verify-quinte-product.py")
+PRODUCT = load_module("test_product", ROOT / "bin" / "verify-product.py")
 EXECUTION_BUILDER = load_module("test_execution_builder", ROOT / "bin" / "build-route-execution-report.py")
 EXECUTION_VALIDATOR = load_module("test_execution_validator", ROOT / "bin" / "validate-route-execution-report.py")
+
+
+class ContractSchemaTests(unittest.TestCase):
+    def test_action_packet_schema_matches_active_product_decisions(self) -> None:
+        schema = json.loads((ROOT / "schemas" / "action-packet.schema.json").read_text())
+        self.assertEqual(schema["properties"]["packet_version"]["const"], CONTRACTS.ACTION_PACKET_VERSION)
+        product = schema["$defs"]["productOutcome"]
+        self.assertEqual(set(product["properties"]["decision"]["enum"]), {"PASS", "BLOCK", "ESCALATE"})
+        self.assertEqual(product["properties"]["status"]["const"], "completed")
+        conditional = product["allOf"][0]
+        self.assertEqual(conditional["if"]["properties"]["product_kind"]["const"], "QUINTE")
+        self.assertEqual(conditional["then"]["properties"]["decision"]["const"], "PASS")
+
+        try:
+            import jsonschema
+        except ModuleNotFoundError:
+            return
+        jsonschema.Draft202012Validator.check_schema(schema)
+
+    def test_runtime_resolution_honors_explicit_state_and_binary_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            binary = root / "quinte"
+            binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            binary.chmod(0o755)
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "QUINTE_HOME": str(root / "state"),
+                    "HIGHBALL_QUINTE_BIN": str(binary),
+                },
+                clear=False,
+            ):
+                self.assertEqual(PRODUCT.trusted_runs_root(), (root / "state" / "runs").resolve())
+                self.assertEqual(PRODUCT.active_quinte_binary(), binary.resolve())
+
+    def test_route_execution_schema_matches_active_version(self) -> None:
+        schema = json.loads((ROOT / "schemas" / "route-execution-report.schema.json").read_text())
+        self.assertEqual(
+            schema["properties"]["execution_report_version"]["const"],
+            CONTRACTS.ROUTE_EXECUTION_REPORT_VERSION,
+        )
+        try:
+            import jsonschema
+        except ModuleNotFoundError:
+            return
+        jsonschema.Draft202012Validator.check_schema(schema)
 
 
 def write(path: Path, value: Any) -> None:
@@ -90,7 +138,7 @@ def trace(req: dict[str, Any], **changes: Any) -> dict[str, Any]:
     return value
 
 
-def product(home: Path, req: dict[str, Any], binary: Path, *, result_version: str = "2.0") -> Path:
+def product(home: Path, req: dict[str, Any], binary: Path, *, result_version: str = "2.1") -> Path:
     run_id = "018f47a2-4b5c-7d6e-8f90-123456789abc"
     run_dir = home / "runs" / run_id
     binding = CONTRACTS.action_binding_sha256(req)
@@ -125,6 +173,14 @@ def product(home: Path, req: dict[str, Any], binary: Path, *, result_version: st
         "action_scope": req["action_scope"],
         "affected_paths": req["affected_paths"],
         "action_binding_sha256": binding,
+        "seat_binding": {
+            "seat_id": "seat-test",
+            "family": "mimo",
+            "provider": "xiaomi-token-plan-cn",
+            "text_model": "mimo-v2.5-pro",
+            "multimodal_model": "mimo-v2.5-pro",
+        },
+        "route_bindings": [],
         "summary": "Complete review.",
         "recommendation": "Proceed within scope.",
         "dissent": [],
@@ -140,12 +196,28 @@ def product(home: Path, req: dict[str, Any], binary: Path, *, result_version: st
             "wall_time_seconds": 1,
         },
     }
+    parties = ["Party A", "Party B", "Party C", "Party D", "Party E", "Counterpart Arbiter", "Primary Arbiter"]
+    route_ids = ["codewhale", "opencode", "kilo", "mimo", "omp", "cc", "pa"]
+    result["route_bindings"] = [
+        {
+            "party_id": party,
+            "route_id": route,
+            "adapter": "omp",
+            "executable": "omp",
+            "family": "mimo",
+            "provider": "xiaomi-token-plan-cn",
+            "text_model": "mimo-v2.5-pro",
+            "multimodal_model": "mimo-v2.5-pro",
+            "perspective": "",
+        }
+        for party, route in zip(parties, route_ids)
+    ]
     result_path = run_dir / "result.json"
     write(run_dir / "input" / "brief.json", brief)
     write(result_path, result)
     result_sha = CONTRACTS.sha256_bytes(result_path.read_bytes())
     manifest = {
-        "manifest_version": "1.0",
+        "manifest_version": "2.0",
         "run_id": run_id,
         "created_at": "2026-01-01T00:00:00.000Z",
         "updated_at": "2026-01-01T00:00:01.000Z",
@@ -156,6 +228,8 @@ def product(home: Path, req: dict[str, Any], binary: Path, *, result_version: st
         "runtime_sha256": CONTRACTS.sha256_bytes(binary.read_bytes()),
         "protocol_version": "1.0",
         "effective_model": "mimo-v2.5-pro",
+        "seat_binding": result["seat_binding"],
+        "route_bindings": result["route_bindings"],
         "sandbox_mode": "process",
         "current_phase": None,
         "error": None,
@@ -166,6 +240,53 @@ def product(home: Path, req: dict[str, Any], binary: Path, *, result_version: st
     }
     write(run_dir / "manifest.json", manifest)
     return result_path
+
+
+def magi_product(root: Path, req: dict[str, Any], decision: str = "PASS") -> Path:
+    trial = root / "magi-trial"
+    trial.mkdir(parents=True)
+    identity = {
+        "product_version": "1.0",
+        "trial_id": "trial-001",
+        "status": "completed",
+        "runtime_sha256": "sha256:" + "1" * 64,
+        "agent_config_sha256": "sha256:" + "2" * 64,
+        "builder_config_sha256": "sha256:" + "3" * 64,
+        "original_brief_sha256": "sha256:" + "4" * 64,
+        "action_binding_sha256": CONTRACTS.action_binding_sha256(req),
+        "question": req["question"],
+        "action_scope": req["action_scope"],
+        "affected_paths": req["affected_paths"],
+        "final_decision": decision,
+        "final_verdict_ref": "final/verdict.json",
+        "final_verdict_sha256": "sha256:" + "5" * 64,
+        "residual_trace_ref": "final/residual-trace.json",
+        "residual_trace_sha256": "sha256:" + "6" * 64,
+        "seats": [
+            {
+                "seat_id": f"seat-{index}",
+                "family": family,
+                "provider": f"provider-{family}",
+                "text_model": f"model-{family}",
+                "multimodal_model": f"model-{family}",
+                "profile_sha256": "sha256:" + str(index) * 64,
+                "thesis_sha256": "sha256:" + str(index + 3) * 64,
+                "dossier_ref": f"dossiers/seat-{index}.json",
+                "dossier_sha256": "sha256:" + str(index + 6) * 64,
+                "quinte_run_id": f"run-{index}",
+                "quinte_manifest_sha256": "sha256:" + chr(96 + index) * 64,
+                "quinte_result_sha256": "sha256:" + chr(99 + index) * 64,
+            }
+            for index, family in enumerate(("mimo", "deepseek", "openai"), start=1)
+        ],
+        "cross_reviews": [
+            {"artifact_ref": f"reviews/{index}.json", "sha256": "sha256:" + format(index, "x") * 64}
+            for index in range(1, 7)
+        ],
+    }
+    encoded = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    write(trial / "product-summary.json", {**identity, "product_sha256": CONTRACTS.sha256_bytes(encoded)})
+    return trial
 
 
 class FailClosedTests(unittest.TestCase):
@@ -185,23 +306,44 @@ class FailClosedTests(unittest.TestCase):
             encoding="utf-8",
         )
         self.binary.chmod(0o755)
+        self.magi_binary = self.root / "bin" / "magi"
+        self.magi_binary.write_text(
+            "#!/usr/bin/env python3\n"
+            "import pathlib, sys\n"
+            "trial = pathlib.Path(sys.argv[-1])\n"
+            "print((trial/'product-summary.json').read_text())\n",
+            encoding="utf-8",
+        )
+        self.magi_binary.chmod(0o755)
         os.environ["PATH"] = str(self.binary.parent) + os.pathsep + self.old_path
         self.old_runs_root = PRODUCT.trusted_runs_root
         self.old_binary = PRODUCT.active_quinte_binary
+        self.old_magi_binary = PRODUCT.active_magi_binary
+        self.old_builder_magi_binary = BUILDER.PRODUCT.active_magi_binary
+        self.old_validator_magi_binary = VALIDATOR.PRODUCT.active_magi_binary
+        self.old_execution_magi_binary = EXECUTION_BUILDER.ACTION_PACKET.PRODUCT.active_magi_binary
         PRODUCT.trusted_runs_root = lambda: (self.root / "quinte" / "runs").resolve()
         PRODUCT.active_quinte_binary = lambda: self.binary.resolve()
+        PRODUCT.active_magi_binary = lambda: self.magi_binary.resolve()
+        BUILDER.PRODUCT.active_magi_binary = lambda: self.magi_binary.resolve()
+        VALIDATOR.PRODUCT.active_magi_binary = lambda: self.magi_binary.resolve()
+        EXECUTION_BUILDER.ACTION_PACKET.PRODUCT.active_magi_binary = lambda: self.magi_binary.resolve()
 
     def tearDown(self) -> None:
         os.environ["PATH"] = self.old_path
         PRODUCT.trusted_runs_root = self.old_runs_root
         PRODUCT.active_quinte_binary = self.old_binary
+        PRODUCT.active_magi_binary = self.old_magi_binary
+        BUILDER.PRODUCT.active_magi_binary = self.old_builder_magi_binary
+        VALIDATOR.PRODUCT.active_magi_binary = self.old_validator_magi_binary
+        EXECUTION_BUILDER.ACTION_PACKET.PRODUCT.active_magi_binary = self.old_execution_magi_binary
         self.temp.cleanup()
 
-    def build(self, req: dict[str, Any], tr: dict[str, Any], result: Path | None = None, auth: Path | None = None) -> dict[str, Any]:
+    def build(self, req: dict[str, Any], tr: dict[str, Any], result: Path | None = None, auth: Path | None = None, magi: Path | None = None) -> dict[str, Any]:
         req_path, trace_path = self.root / "request.json", self.root / "trace.json"
         write(req_path, req)
         write(trace_path, tr)
-        return BUILDER.build_packet(req_path, trace_path, [result] if result else [], auth)
+        return BUILDER.build_packet(req_path, trace_path, [result] if result else [], auth, [magi] if magi else [])
 
     def test_action_binding_canonical_fixture(self) -> None:
         value = request(question="允许改动吗？", affected_paths=[r"HIGHBALL\bin\tool.py", "a/b.py"])
@@ -215,7 +357,7 @@ class FailClosedTests(unittest.TestCase):
         req = request()
         packet = self.build(req, trace(req, instrument="MAGI"))
         self.assertEqual(packet["action_decision"], "block")
-        self.assertNotEqual(packet["execution_evidence"]["status"], "complete")
+        self.assertNotEqual(packet["product_evidence"]["status"], "complete")
 
     def test_fake_minimal_completed_result_is_rejected(self) -> None:
         req = request()
@@ -223,7 +365,7 @@ class FailClosedTests(unittest.TestCase):
         write(fake, {"run_id": "x", "status": "completed"})
         packet = self.build(req, trace(req), fake)
         self.assertEqual(packet["action_decision"], "block")
-        self.assertEqual(packet["execution_evidence"]["status"], "invalid")
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
 
     def test_block_and_escalate_decisions_block_empty_residuals(self) -> None:
         req = request()
@@ -237,23 +379,98 @@ class FailClosedTests(unittest.TestCase):
         req = request()
         home = self.root / "old"
         packet = self.build(req, trace(req), product(home, req, self.binary, result_version="1.0"))
-        self.assertEqual(packet["execution_evidence"]["status"], "invalid")
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
 
     def test_cross_task_result_replay_is_rejected(self) -> None:
         original = request()
         replay = request(question="A different task")
         home = self.root / "run"
         packet = self.build(replay, trace(replay), product(home, original, self.binary))
-        self.assertEqual(packet["execution_evidence"]["status"], "invalid")
-        self.assertTrue(any("action binding" in error for error in packet["execution_evidence"]["errors"]))
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+        self.assertTrue(any("action binding" in error for error in packet["product_evidence"]["errors"]))
 
-    def test_kengen_required_action_without_artifact_blocks(self) -> None:
+    def test_magi_route_requires_verified_atomic_product(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        tr["trial_manifest"]["base_model_relation"] = "heterogeneous_models"
+        tr["trial_manifest"]["perspective_count"] = 3
+        tr["trial_manifest"]["perspectives"] = tr["trial_manifest"]["perspectives"][:3]
+        packet = self.build(req, tr, magi=magi_product(self.root, req))
+        self.assertEqual(packet["product_evidence"]["status"], "complete")
+        self.assertEqual(packet["product_evidence"]["product"]["product_kind"], "MAGI")
+        self.assertNotEqual(packet["action_decision"], "block")
+
+    def test_completed_magi_block_and_escalate_are_valid_but_non_authorizing(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        tr["trial_manifest"]["base_model_relation"] = "heterogeneous_models"
+        tr["trial_manifest"]["perspective_count"] = 3
+        tr["trial_manifest"]["perspectives"] = tr["trial_manifest"]["perspectives"][:3]
+        for decision in ("BLOCK", "ESCALATE"):
+            with self.subTest(decision=decision):
+                trial = magi_product(self.root / decision.lower(), req, decision)
+                packet = self.build(req, tr, magi=trial)
+                self.assertEqual(packet["product_evidence"]["status"], "complete")
+                self.assertEqual(packet["product_evidence"]["errors"], [])
+                self.assertEqual(packet["product_evidence"]["product"]["decision"], decision)
+                self.assertEqual(packet["action_decision"], "block")
+                self.assertTrue(any(f"MAGI product decision is {decision}" in reason for reason in packet["decision_reasons"]))
+                self.assertFalse(VALIDATOR.validate_packet(packet, base_dir=self.root))
+
+                packet_path = self.root / decision.lower() / "packet.json"
+                write(packet_path, packet)
+                report = EXECUTION_BUILDER.build_report([str(packet_path)])
+                self.assertEqual(report["complete_count"], 1)
+                self.assertEqual(report["execution_gate"], "accepted")
+                self.assertEqual(report["packet_summaries"][0]["action_decision"], "block")
+                self.assertFalse(EXECUTION_VALIDATOR.validate_report(report))
+
+    def test_unknown_magi_decision_is_invalid(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        packet = self.build(req, tr, magi=magi_product(self.root, req, "REVIEW"))
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+        self.assertEqual(packet["action_decision"], "block")
+
+    def test_magi_trace_alone_cannot_authorize(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        tr["trial_manifest"]["base_model_relation"] = "heterogeneous_models"
+        tr["trial_manifest"]["perspective_count"] = 3
+        tr["trial_manifest"]["perspectives"] = tr["trial_manifest"]["perspectives"][:3]
+        packet = self.build(req, tr)
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+        self.assertEqual(packet["action_decision"], "block")
+
+    def test_magi_same_family_disguise_is_rejected(self) -> None:
+        req = request(change_class="architecture")
+        trial = magi_product(self.root, req)
+        summary_path = trial / "product-summary.json"
+        summary = json.loads(summary_path.read_text())
+        summary["seats"][1]["family"] = summary["seats"][0]["family"]
+        identity = {key: value for key, value in summary.items() if key != "product_sha256"}
+        summary["product_sha256"] = CONTRACTS.sha256_bytes(
+            json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        )
+        write(summary_path, summary)
+        tr = trace(req, instrument="MAGI")
+        packet = self.build(req, tr, magi=trial)
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+        self.assertTrue(any("distinct model families" in error for error in packet["product_evidence"]["errors"]))
+
+    def test_wrong_atomic_product_kind_is_rejected(self) -> None:
+        req = request(change_class="architecture")
+        tr = trace(req, instrument="MAGI")
+        packet = self.build(req, tr, result=product(self.root / "wrong-kind", req, self.binary))
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+
+    def test_authorization_required_action_without_artifact_blocks(self) -> None:
         req = request(change_class="credential")
         packet = self.build(req, trace(req, instrument="human"))
         self.assertEqual(packet["authorization"]["status"], "missing")
         self.assertEqual(packet["action_decision"], "block")
 
-    def test_kengen_consume_rejects_replay(self) -> None:
+    def test_authorization_consume_rejects_replay(self) -> None:
         req = request(change_class="credential")
         req_path, auth_path = self.root / "request.json", self.root / "auth.json"
         write(req_path, req)
@@ -268,7 +485,7 @@ class FailClosedTests(unittest.TestCase):
             "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "expires_at": (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
         })
-        command = [sys.executable, str(ROOT / "bin" / "consume-kengen-authorization.py"), str(req_path), str(auth_path), "--ledger", str(self.root / "ledger")]
+        command = [sys.executable, str(ROOT / "bin" / "consume-authorization.py"), str(req_path), str(auth_path), "--ledger", str(self.root / "ledger")]
         env = {**os.environ, "HIGHBALL_TESTING": "1"}
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 0)
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 1)
@@ -288,27 +505,27 @@ class FailClosedTests(unittest.TestCase):
         packet_path = self.root / "packet.json"
         write(packet_path, packet)
         report = EXECUTION_BUILDER.build_report([str(packet_path)])
-        self.assertEqual(report["execution_report_version"], "1.1")
+        self.assertEqual(report["execution_report_version"], "2.0")
         summary = report["packet_summaries"][0]
-        self.assertEqual(summary["quinte_run_id"], packet["execution_evidence"]["quinte_outcome"]["run_id"])
+        self.assertEqual(summary["product_id"], packet["product_evidence"]["product"]["product_id"])
         self.assertEqual(
             set(summary),
             {
                 "packet_ref", "route_group", "route", "trace_instrument",
                 "action_boundary", "action_decision", "execution_required",
-                "execution_status", "quinte_run_id", "quinte_result_sha256",
+                "execution_status", "product_kind", "product_id", "product_sha256",
                 "action_binding_sha256", "errors",
             },
         )
         self.assertFalse(EXECUTION_VALIDATOR.validate_report(report))
 
-    def test_bannin_protects_bin_python_and_requires_packet(self) -> None:
+    def test_protected_write_guard_protects_bin_python_and_requires_packet(self) -> None:
         log = self.root / "session.log"
         log.write_text("write HIGHBALL/bin/tool.py\n", encoding="utf-8")
-        command = ["bash", str(ROOT / "lib" / "bannin.sh"), "--check", str(log), "--action-packet", str(self.root / "missing.json")]
+        command = ["bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check", str(log), "--action-packet", str(self.root / "missing.json")]
         self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
 
-    def test_bannin_consumes_kengen_before_pass_and_blocks_replay(self) -> None:
+    def test_protected_write_guard_consumes_authorization_before_pass_and_blocks_replay(self) -> None:
         req = request(action_boundary="reversible", change_class="credential", risk="LOW")
         tr = trace(req, instrument="human")
         tr.pop("trial_manifest")
@@ -316,7 +533,7 @@ class FailClosedTests(unittest.TestCase):
         auth = self.root / "authorization.json"
         write(auth, {
             "authorization_version": "1.0",
-            "authorization_id": "bannin-single-use",
+            "authorization_id": "protected-write-guard-single-use",
             "authorized_by": "user",
             "decision": "authorize",
             "action_binding_sha256": CONTRACTS.action_binding_sha256(req),
@@ -331,7 +548,7 @@ class FailClosedTests(unittest.TestCase):
         write(packet_path, packet)
         log = self.root / "session.log"
         log.write_text("write HIGHBALL/bin/tool.py\n", encoding="utf-8")
-        command = ["bash", str(ROOT / "lib" / "bannin.sh"), "--check", str(log), "--action-packet", str(packet_path)]
+        command = ["bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check", str(log), "--action-packet", str(packet_path)]
         env = {**os.environ, "HOME": str(self.root / "home")}
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 0)
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 1)

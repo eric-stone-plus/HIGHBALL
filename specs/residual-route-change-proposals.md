@@ -1,7 +1,7 @@
 # Residual Route Change Proposals
 
 > Route change proposals convert route policy evidence into reviewable change
-> candidates. They do not edit files, update SHIMEI, or authorize action.
+> candidates. They do not edit files, update Product Router, or authorize action.
 
 ## 1. Purpose
 
@@ -43,14 +43,14 @@ Before a proposal affects routing documentation or a host overlay:
 2. Complete maintainer review.
 3. Update route documentation or host overlay only after review.
 4. Run HIGHBALL route and evidence-chain tests.
-5. Obtain KENGEN authorization before protected writes or push.
+5. Obtain Authorization Gate authorization before protected writes or push.
 
 ## 5. Non-Authorization
 
 Route change proposals do not:
 
 - modify `bin/route-residual-action.py`
-- edit SHIMEI overlays
+- edit Product Router overlays
 - change live host routing
 - authorize protected writes, push, deletion, deployment, legal, or financial
   actions

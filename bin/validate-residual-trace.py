@@ -430,12 +430,12 @@ def main() -> int:
     try:
         text = args.verdict_file.read_text(encoding="utf-8")
     except OSError as exc:
-        print(f"[BANNIN] ERROR: cannot read verdict file: {exc}", file=sys.stderr)
+        print(f"[Protected-Write Guard] ERROR: cannot read verdict file: {exc}", file=sys.stderr)
         return 2
 
     blocks, raw_json_mode = candidate_blocks(text, args.verdict_file)
     if not blocks:
-        print("[BANNIN] ERROR: verdict has no JSON residual closure ledger", file=sys.stderr)
+        print("[Protected-Write Guard] ERROR: verdict has no JSON residual closure ledger", file=sys.stderr)
         return 2
 
     saw_trace = False
@@ -454,21 +454,21 @@ def main() -> int:
 
     if not saw_trace:
         if raw_json_mode:
-            print("[BANNIN] ERROR: raw JSON file does not contain a residuals array", file=sys.stderr)
+            print("[Protected-Write Guard] ERROR: raw JSON file does not contain a residuals array", file=sys.stderr)
             return 2
         else:
-            print("[BANNIN] ERROR: verdict JSON found but no residual closure ledger", file=sys.stderr)
+            print("[Protected-Write Guard] ERROR: verdict JSON found but no residual closure ledger", file=sys.stderr)
             return 2
 
     for finding in all_findings:
-        print(f"[BANNIN] {finding}", file=sys.stderr)
+        print(f"[Protected-Write Guard] {finding}", file=sys.stderr)
 
     if any(finding.severity == "ERROR" for finding in all_findings):
         return 2
     if any(finding.severity == "BLOCK" for finding in all_findings):
         return 1
 
-    print("[BANNIN] residual closure ledger verified")
+    print("[Protected-Write Guard] residual closure ledger verified")
     return 0
 
 

@@ -6,7 +6,7 @@
 
 ## 1. Scope
 
-Residual Closure is a BANNIN protected-write check. It applies when a QUINTE or
+Residual Closure is a protected-write check. It applies when a QUINTE or
 other audit verdict is used to justify changes to public protocol or runtime
 surface files, especially:
 
@@ -33,7 +33,7 @@ The old protected-write check answered only whether a recent QUINTE verdict
 trail existed.
 
 That is insufficient. A verdict may contain unresolved `HIGH` or `P0` findings.
-If BANNIN passes merely because the verdict exists, the system can convert
+If Protected-Write Guard passes merely because the verdict exists, the system can convert
 "problem detected" into "permission granted" without proving that the problem
 was corrected, blocked, or waived.
 
@@ -87,7 +87,7 @@ HIGHBALL's reusable validator is `bin/validate-residual-trace.py`.
 The validator accepts both markdown verdicts with fenced JSON blocks and raw
 JSON trace artifacts.
 The companion measurement tool is `bin/measure-residual-trace.py`; it reports
-advisory residual quality metrics without replacing BANNIN's block/pass
+advisory residual quality metrics without replacing Protected-Write Guard's block/pass
 closure rule.
 When a trace includes RASHOMON `trial_manifest`, the measurement tool also
 reports whether the run had independent first-pass artifacts, perturbation axes,
@@ -99,7 +99,7 @@ Archive-level adoption can be inspected with `bin/scan-residual-archive.py`.
 That scanner is read-only and should not be used to rewrite historical verdicts
 for cosmetic compliance.
 
-When historical verdicts do not contain JSON, BANNIN implementations may parse a
+When historical verdicts do not contain JSON, Protected-Write Guard implementations may parse a
 minimal textual form with these fields: residual id, severity, finding, state,
 evidence, and scope.
 
@@ -107,9 +107,9 @@ The standalone shell guard currently enforces JSON ledgers when they are
 present. Textual historical verdict parsing is optional compatibility work, not
 the primary contract.
 
-## 5. BANNIN Decision Rule
+## 5. Protected-Write Guard Decision Rule
 
-For protected writes, BANNIN uses this conservative rule.
+For protected writes, Protected-Write Guard uses this conservative rule.
 
 PASS requires a valid verdict trail and every action-blocking ledger item must
 be `closed`, `blocked`, `waived`, or `not_applicable` with closure evidence and

@@ -123,5 +123,5 @@ Route calibration does not:
   evidence
 
 Use `bin/route-residual-action.py` for a specific route decision, Action
-Packets for boundary binding, and KENGEN/BANNIN for runtime authorization and
+Packets for boundary binding, and Authorization Gate/Protected-Write Guard for runtime authorization and
 enforcement.

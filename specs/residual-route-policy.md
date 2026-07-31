@@ -111,7 +111,7 @@ policy report alone cannot prove:
 Route policy reports do not:
 
 - modify `bin/route-residual-action.py`
-- change SHIMEI bindings
+- change Product Router bindings
 - authorize protected writes, push, deployment, legal, financial, or deletion
   actions
 - prove truth

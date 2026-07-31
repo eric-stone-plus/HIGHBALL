@@ -11,7 +11,7 @@
     "trace",
     "validation",
     "quality",
-    "execution_evidence",
+    "product_evidence",
     "authorization",
     "action_decision",
     "decision_reasons",
@@ -20,7 +20,7 @@
   "properties": {
     "packet_version": {
       "type": "string",
-      "const": "1.1"
+      "const": "2.0"
     },
     "route_request": {
       "$ref": "#/$defs/routeRequest"
@@ -37,8 +37,8 @@
     "quality": {
       "$ref": "#/$defs/quality"
     },
-    "execution_evidence": {
-      "$ref": "#/$defs/executionEvidence"
+    "product_evidence": {
+      "$ref": "#/$defs/productEvidence"
     },
     "action_decision": {
       "type": "string",
@@ -157,7 +157,7 @@
         "reason",
         "required_artifacts",
         "residual_trace_required",
-        "kengen_authorization_required"
+        "authorization_required"
       ],
       "properties": {
         "route": {
@@ -187,7 +187,7 @@
         "residual_trace_required": {
           "type": "boolean"
         },
-        "kengen_authorization_required": {
+        "authorization_required": {
           "type": "boolean"
         }
       }
@@ -403,14 +403,14 @@
         }
       }
     },
-    "executionEvidence": {
+    "productEvidence": {
       "type": "object",
       "additionalProperties": false,
       "required": [
         "required",
         "status",
         "binding",
-        "quinte_outcome",
+        "product",
         "errors"
       ],
       "properties": {
@@ -431,18 +431,19 @@
         "binding": {
           "type": "string",
           "enum": [
-            "atomic_quinte_outcome",
+            "atomic_quinte_product",
+            "atomic_magi_product",
             "not_applicable"
           ],
-          "description": "Active QUINTE product binding or a route with no QUINTE product."
+          "description": "Atomic QUINTE or MAGI product binding, or a route with no product."
         },
-        "quinte_outcome": {
+        "product": {
           "oneOf": [
             {
               "type": "null"
             },
             {
-              "$ref": "#/$defs/quinteProductOutcome"
+              "$ref": "#/$defs/productOutcome"
             }
           ]
         },
@@ -454,43 +455,49 @@
         }
       }
     },
-    "quinteProductOutcome": {
+    "productOutcome": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "result_ref",
-        "run_id",
+        "product_ref",
+        "product_kind",
+        "product_version",
+        "product_sha256",
+        "product_id",
         "status",
-        "result_version",
-        "result_sha256",
-        "brief_sha256",
+        "decision",
         "question",
         "action_scope",
         "affected_paths",
         "action_binding_sha256"
       ],
       "properties": {
-        "result_ref": {
+        "product_ref": {
           "type": "string",
           "minLength": 1
         },
-        "run_id": {
+        "product_kind": {
           "type": "string",
-          "format": "uuid"
+          "enum": ["QUINTE", "MAGI"]
+        },
+        "product_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "product_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "product_id": {
+          "type": "string",
+          "minLength": 1
         },
         "status": {
           "const": "completed"
         },
-        "result_version": {
-          "const": "2.0"
-        },
-        "result_sha256": {
+        "decision": {
           "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
-        },
-        "brief_sha256": {
-          "type": "string",
-          "pattern": "^sha256:[a-f0-9]{64}$"
+          "enum": ["PASS", "BLOCK", "ESCALATE"]
         },
         "question": {
           "type": "string",
@@ -512,7 +519,22 @@
           "type": "string",
           "pattern": "^sha256:[a-f0-9]{64}$"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "product_kind": {"const": "QUINTE"}
+            },
+            "required": ["product_kind"]
+          },
+          "then": {
+            "properties": {
+              "decision": {"const": "PASS"}
+            }
+          }
+        }
+      ]
     },
     "residualTrace": {
       "type": "object",

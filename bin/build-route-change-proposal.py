@@ -96,7 +96,7 @@ def candidate_changes(route_group: str, policy_recommendation: str) -> list[dict
                 "scope": scope,
                 "affected_paths": [
                     "specs/residual-routing.md",
-                    "specs/shimei-routing.md",
+                    "specs/product-routing.md",
                 ],
                 "rationale": "policy evidence recommends blocking this route group before similar protected use",
             }
@@ -158,7 +158,7 @@ def required_gates(policy_recommendation: str) -> list[str]:
             [
                 "update route documentation or host overlay only after review",
                 "run HIGHBALL route and evidence-chain tests",
-                "obtain KENGEN authorization before protected writes or push",
+                "obtain Authorization Gate authorization before protected writes or push",
             ]
         )
     else:
@@ -189,7 +189,7 @@ def expected_proposal(policy: dict[str, Any], policy_ref: str) -> dict[str, Any]
         "candidate_changes": candidate_changes(route_group, recommendation),
         "required_gates": required_gates(recommendation),
         "status": "proposed",
-        "non_authorization": "Route change proposals do not modify files, routing rules, authorization state, or SHIMEI bindings.",
+        "non_authorization": "Route change proposals do not modify files, routing rules, authorization state, or Product Router bindings.",
     }
 
 

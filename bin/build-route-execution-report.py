@@ -70,11 +70,11 @@ def summarize_packet(packet_ref: str, packet_path: Path) -> tuple[dict[str, Any]
     packet_errors = ACTION_PACKET.validate_packet(packet, base_dir=packet_path.parent)
     trace = packet.get("trace") if isinstance(packet.get("trace"), dict) else {}
     route_decision = packet.get("route_decision") if isinstance(packet.get("route_decision"), dict) else {}
-    execution = packet.get("execution_evidence") if isinstance(packet.get("execution_evidence"), dict) else {}
+    execution = packet.get("product_evidence") if isinstance(packet.get("product_evidence"), dict) else {}
     status = execution.get("status") if isinstance(execution.get("status"), str) else "invalid"
     if packet_errors:
         status = "invalid"
-    outcome = execution.get("quinte_outcome") if isinstance(execution.get("quinte_outcome"), dict) else {}
+    outcome = execution.get("product") if isinstance(execution.get("product"), dict) else {}
 
     summary = {
         "packet_ref": packet_ref,
@@ -85,8 +85,9 @@ def summarize_packet(packet_ref: str, packet_path: Path) -> tuple[dict[str, Any]
         "action_decision": packet.get("action_decision") if isinstance(packet.get("action_decision"), str) else "unknown",
         "execution_required": execution.get("required") is True,
         "execution_status": status,
-        "quinte_run_id": outcome.get("run_id") if isinstance(outcome.get("run_id"), str) else None,
-        "quinte_result_sha256": outcome.get("result_sha256") if isinstance(outcome.get("result_sha256"), str) else None,
+        "product_kind": outcome.get("product_kind") if isinstance(outcome.get("product_kind"), str) else None,
+        "product_id": outcome.get("product_id") if isinstance(outcome.get("product_id"), str) else None,
+        "product_sha256": outcome.get("product_sha256") if isinstance(outcome.get("product_sha256"), str) else None,
         "action_binding_sha256": outcome.get("action_binding_sha256") if isinstance(outcome.get("action_binding_sha256"), str) else None,
         "errors": [*packet_errors, *[item for item in execution.get("errors", []) if isinstance(item, str)]],
     }

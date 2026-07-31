@@ -94,7 +94,7 @@ Route experiment manifests and reviews do not:
 - dispatch QUINTE, MAGI, direct evidence, or human review
 - authorize protected writes, push, deployment, financial, legal, or deletion
   actions
-- change SHIMEI bindings
+- change Product Router bindings
 - mutate route policy
 - prove truth
 - replace route calibration, baseline comparison, outcome ledgers, policy

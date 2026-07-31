@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Verify a QUINTE product bundle against the active HIGHBALL contract."""
+"""Verify QUINTE and MAGI product bundles against the active HIGHBALL contract."""
 
 from __future__ import annotations
 
 import importlib.util
 import json
 import os
+import shutil
 import subprocess
 import uuid
 from pathlib import Path
@@ -47,6 +48,8 @@ MANIFEST_FIELDS = {
     "runtime_sha256",
     "protocol_version",
     "effective_model",
+    "seat_binding",
+    "route_bindings",
     "sandbox_mode",
     "current_phase",
     "error",
@@ -64,6 +67,8 @@ RESULT_FIELDS = {
     "action_scope",
     "affected_paths",
     "action_binding_sha256",
+    "seat_binding",
+    "route_bindings",
     "summary",
     "recommendation",
     "dissent",
@@ -100,25 +105,46 @@ PERSPECTIVE_FIELDS = {
     "r2_artifact",
     "independent_first_pass",
 }
-EXPECTED_ROUTES = [
-    ("Party A", "codewhale"),
-    ("Party B", "opencode"),
-    ("Party C", "kilo"),
-    ("Party D", "mimo"),
-    ("Party E", "omp"),
+PARTIES = [
+    "Party A",
+    "Party B",
+    "Party C",
+    "Party D",
+    "Party E",
+    "Counterpart Arbiter",
+    "Primary Arbiter",
 ]
+SEAT_BINDING_FIELDS = {"seat_id", "family", "provider", "text_model", "multimodal_model"}
+ROUTE_BINDING_FIELDS = {
+    "party_id",
+    "route_id",
+    "adapter",
+    "executable",
+    "family",
+    "provider",
+    "text_model",
+    "multimodal_model",
+    "perspective",
+}
 
 
 def trusted_runs_root() -> Path:
-    return (Path.home() / ".quinte" / "runs").resolve()
+    state_root = os.environ.get("QUINTE_HOME")
+    root = Path(state_root).expanduser() if state_root else Path.home() / ".quinte"
+    return (root / "runs").resolve()
 
 
 def active_quinte_binary() -> Path | None:
-    candidates = [Path.home() / ".local" / "bin" / "quinte"]
+    configured = os.environ.get("HIGHBALL_QUINTE_BIN")
+    candidates = [Path(configured).expanduser()] if configured else []
+    resolved = shutil.which("quinte")
+    if resolved:
+        candidates.append(Path(resolved))
+    candidates.append(Path.home() / ".local" / "bin" / "quinte")
     if os.name == "nt":
         candidates.insert(0, Path.home() / "AppData" / "Local" / "Programs" / "quinte" / "bin" / "quinte.exe")
     for candidate in candidates:
-        if candidate.is_file():
+        if candidate.is_file() and os.access(candidate, os.X_OK):
             return candidate.resolve()
     return None
 
@@ -172,7 +198,7 @@ def validate_residual(value: Any, index: int, errors: list[str]) -> None:
         errors.append(f"{label}.closure_state is invalid")
 
 
-def validate_trial_manifest(value: Any, errors: list[str]) -> None:
+def validate_trial_manifest(value: Any, route_bindings: Any, errors: list[str]) -> None:
     label = "quinte result trial_manifest"
     if not isinstance(value, dict):
         errors.append(f"{label} must be an object")
@@ -192,12 +218,19 @@ def validate_trial_manifest(value: Any, errors: list[str]) -> None:
             errors.append(f"{item_label} must be an object")
             continue
         exact_fields(perspective, PERSPECTIVE_FIELDS, item_label, errors)
-        expected = EXPECTED_ROUTES[index] if index < len(EXPECTED_ROUTES) else (None, None)
-        if (perspective.get("party_id"), perspective.get("route_id")) != expected:
-            errors.append(f"{item_label} does not match the fixed QUINTE route")
-        if perspective.get("r1_artifact") != f"lanes/R1/{expected[1]}/accepted.json":
+        expected_party = PARTIES[index] if index < 5 else None
+        expected_route = (
+            route_bindings[index].get("route_id")
+            if isinstance(route_bindings, list)
+            and index < len(route_bindings)
+            and isinstance(route_bindings[index], dict)
+            else None
+        )
+        if perspective.get("party_id") != expected_party or perspective.get("route_id") != expected_route:
+            errors.append(f"{item_label} does not match the bound QUINTE route")
+        if perspective.get("r1_artifact") != f"lanes/R1/{expected_route}/accepted.json":
             errors.append(f"{item_label}.r1_artifact is invalid")
-        if perspective.get("r2_artifact") != f"lanes/R2/{expected[1]}/accepted.json":
+        if perspective.get("r2_artifact") != f"lanes/R2/{expected_route}/accepted.json":
             errors.append(f"{item_label}.r2_artifact is invalid")
         if perspective.get("independent_first_pass") is not True:
             errors.append(f"{item_label}.independent_first_pass must be true")
@@ -207,6 +240,50 @@ def validate_trial_manifest(value: Any, errors: list[str]) -> None:
     wall_time = value.get("wall_time_seconds")
     if wall_time is not None and (not isinstance(wall_time, int) or isinstance(wall_time, bool) or wall_time < 0):
         errors.append(f"{label}.wall_time_seconds must be a non-negative integer or null")
+
+
+def validate_binding(value: Any, label: str, errors: list[str]) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        errors.append(f"{label} must be an object")
+        return None
+    exact_fields(value, SEAT_BINDING_FIELDS, label, errors)
+    for field in SEAT_BINDING_FIELDS:
+        if not nonempty(value.get(field)) or any(character.isspace() for character in value[field]):
+            errors.append(f"{label}.{field} must be a non-empty identifier")
+    return value
+
+
+def validate_route_bindings(
+    value: Any, seat: dict[str, Any] | None, label: str, errors: list[str]
+) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or len(value) != 7:
+        errors.append(f"{label} must contain exactly seven role bindings")
+        return []
+    routes: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for index, item in enumerate(value):
+        item_label = f"{label}[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{item_label} must be an object")
+            continue
+        exact_fields(item, ROUTE_BINDING_FIELDS, item_label, errors)
+        if item.get("party_id") != PARTIES[index]:
+            errors.append(f"{item_label}.party_id is out of order")
+        if not nonempty(item.get("route_id")) or item.get("route_id") in seen_ids:
+            errors.append(f"{item_label}.route_id must be a unique non-empty string")
+        else:
+            seen_ids.add(item["route_id"])
+        for field in ("adapter", "executable", "family", "provider", "text_model", "multimodal_model"):
+            if not nonempty(item.get(field)):
+                errors.append(f"{item_label}.{field} must be a non-empty string")
+        if not isinstance(item.get("perspective"), str):
+            errors.append(f"{item_label}.perspective must be a string")
+        if seat is not None:
+            for field in ("family", "provider", "text_model", "multimodal_model"):
+                if item.get(field) != seat.get(field):
+                    errors.append(f"{item_label}.{field} violates the single-family seat binding")
+        routes.append(item)
+    return routes
 
 
 def validate_result(result: dict[str, Any], errors: list[str]) -> None:
@@ -248,7 +325,11 @@ def validate_result(result: dict[str, Any], errors: list[str]) -> None:
                 if residual["id"] in seen_ids:
                     errors.append(f"quinte result residual id is duplicated: {residual['id']}")
                 seen_ids.add(residual["id"])
-    validate_trial_manifest(result.get("trial_manifest"), errors)
+    seat = validate_binding(result.get("seat_binding"), "quinte result seat_binding", errors)
+    routes = validate_route_bindings(
+        result.get("route_bindings"), seat, "quinte result route_bindings", errors
+    )
+    validate_trial_manifest(result.get("trial_manifest"), routes, errors)
 
 
 def validate_brief(brief: dict[str, Any], errors: list[str]) -> None:
@@ -319,6 +400,18 @@ def summarize(
         errors.append("quinte manifest_version is unsupported")
     if manifest.get("protocol_version") != CONTRACTS.QUINTE_PROTOCOL_VERSION:
         errors.append("quinte protocol_version is unsupported")
+    manifest_seat = validate_binding(
+        manifest.get("seat_binding"), "quinte manifest seat_binding", errors
+    )
+    validate_route_bindings(
+        manifest.get("route_bindings"), manifest_seat, "quinte manifest route_bindings", errors
+    )
+    if manifest.get("seat_binding") != result.get("seat_binding"):
+        errors.append("quinte manifest and result seat bindings differ")
+    if manifest.get("route_bindings") != result.get("route_bindings"):
+        errors.append("quinte manifest and result route bindings differ")
+    if isinstance(manifest_seat, dict) and manifest.get("effective_model") != manifest_seat.get("text_model"):
+        errors.append("quinte effective_model differs from the seat text model")
     for field in ("brief_sha256", "policy_sha256", "snapshot_sha256", "runtime_sha256", "result_sha256"):
         if not CONTRACTS.is_digest(manifest.get(field)):
             errors.append(f"quinte manifest {field} is invalid")
@@ -406,41 +499,160 @@ def summarize(
     return outcome, errors
 
 
-def build_execution_evidence(
+def active_magi_binary() -> Path | None:
+    configured = os.environ.get("HIGHBALL_MAGI_BIN")
+    candidates = [Path(configured).expanduser()] if configured else []
+    resolved = shutil.which("magi")
+    if resolved:
+        candidates.append(Path(resolved))
+    candidates.extend([Path.home() / ".local" / "bin" / "magi", Path.home() / "bin" / "magi"])
+    for candidate in candidates:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate.resolve()
+    return None
+
+
+def summarize_magi(
+    ref: str,
+    request: dict[str, Any],
+    base_dir: Path | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    errors: list[str] = []
+    trial = resolve_ref(ref, base_dir)
+    if not trial.is_dir():
+        return None, [f"MAGI trial directory does not exist: {ref}"]
+    binary = active_magi_binary()
+    if binary is None:
+        return None, ["trusted magi executable is not available"]
+    try:
+        completed = subprocess.run(
+            [str(binary), "verify-product", str(trial)],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return None, [f"MAGI product verification failed: {exc}"]
+    if completed.returncode != 0:
+        detail = completed.stderr.strip() or f"exit {completed.returncode}"
+        return None, [f"MAGI product verification failed: {detail}"]
+    try:
+        product = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        return None, [f"MAGI product verification did not return JSON: {exc}"]
+    if not isinstance(product, dict):
+        return None, ["MAGI product summary must be an object"]
+    required = {
+        "product_version", "product_sha256", "trial_id", "status", "runtime_sha256",
+        "agent_config_sha256", "builder_config_sha256", "original_brief_sha256",
+        "action_binding_sha256", "question", "action_scope", "affected_paths",
+        "final_decision", "final_verdict_ref", "final_verdict_sha256",
+        "residual_trace_ref", "residual_trace_sha256", "seats", "cross_reviews",
+    }
+    exact_fields(product, required, "MAGI product summary", errors)
+    if product.get("product_version") != CONTRACTS.MAGI_PRODUCT_VERSION:
+        errors.append("MAGI product_version is unsupported")
+    if product.get("status") != "completed":
+        errors.append("MAGI product is not completed")
+    if product.get("final_decision") not in {"PASS", "BLOCK", "ESCALATE"}:
+        errors.append("MAGI final decision is invalid")
+    identity = {key: value for key, value in product.items() if key != "product_sha256"}
+    encoded = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    if product.get("product_sha256") != CONTRACTS.sha256_bytes(encoded):
+        errors.append("MAGI product summary digest is invalid")
+    for field in (
+        "product_sha256", "runtime_sha256", "agent_config_sha256",
+        "builder_config_sha256", "original_brief_sha256", "action_binding_sha256",
+        "final_verdict_sha256", "residual_trace_sha256",
+    ):
+        if not CONTRACTS.is_digest(product.get(field)):
+            errors.append(f"MAGI product {field} is invalid")
+    if product.get("action_binding_sha256") != CONTRACTS.action_binding_sha256(request):
+        errors.append("MAGI action binding does not match the route request")
+    for field in ("question", "action_scope", "affected_paths"):
+        if product.get(field) != request.get(field):
+            errors.append(f"MAGI product {field} does not match the route request")
+    seats = product.get("seats")
+    if not isinstance(seats, list) or len(seats) != 3:
+        errors.append("MAGI product must contain exactly three seats")
+    else:
+        families = [item.get("family") for item in seats if isinstance(item, dict)]
+        profiles = [item.get("profile_sha256") for item in seats if isinstance(item, dict)]
+        runs = [item.get("quinte_run_id") for item in seats if isinstance(item, dict)]
+        if len(families) != 3 or len(set(families)) != 3:
+            errors.append("MAGI product must contain three distinct model families")
+        if len(profiles) != 3 or len(set(profiles)) != 3:
+            errors.append("MAGI product must contain three distinct profile digests")
+        if len(runs) != 3 or len(set(runs)) != 3:
+            errors.append("MAGI product must contain three distinct QUINTE runs")
+    reviews = product.get("cross_reviews")
+    if not isinstance(reviews, list) or len(reviews) != 6:
+        errors.append("MAGI product must contain all six directed cross-reviews")
+    outcome = {
+        "product_ref": str(trial),
+        "product_kind": "MAGI",
+        "product_version": product.get("product_version", ""),
+        "product_sha256": product.get("product_sha256", ""),
+        "product_id": product.get("trial_id", ""),
+        "status": product.get("status", ""),
+        "decision": product.get("final_decision", ""),
+        "question": product.get("question", ""),
+        "action_scope": product.get("action_scope"),
+        "affected_paths": product.get("affected_paths", []),
+        "action_binding_sha256": product.get("action_binding_sha256", ""),
+    }
+    return outcome, errors
+
+
+def build_product_evidence(
     request: dict[str, Any],
     route_decision: dict[str, Any],
-    result_refs: list[str] | None = None,
+    quinte_refs: list[str] | None = None,
+    magi_refs: list[str] | None = None,
     *,
     base_dir: Path | None = None,
 ) -> dict[str, Any]:
-    required = route_decision.get("route") == "QUINTE"
-    refs = list(result_refs or [])
+    route = route_decision.get("route")
+    qrefs = list(quinte_refs or [])
+    mrefs = list(magi_refs or [])
+    required = route in {"QUINTE", "MAGI"}
+    expected = route if required else None
     errors: list[str] = []
+    if len(qrefs) + len(mrefs) > 1:
+        errors.append("product binding accepts exactly one atomic product")
+    if route == "QUINTE" and (len(qrefs) != 1 or mrefs):
+        errors.append("active QUINTE route requires exactly one QUINTE product")
+    elif route == "MAGI" and (len(mrefs) != 1 or qrefs):
+        errors.append("active MAGI route requires exactly one MAGI product")
+    elif not required and (qrefs or mrefs):
+        errors.append("a product was supplied for a route that does not accept one")
     outcome = None
-    if required and len(refs) != 1:
-        errors.append("active QUINTE route requires exactly one atomic result.json")
-    elif not required and refs:
-        errors.append("QUINTE result was supplied for a route that does not authorize QUINTE execution")
-    if len(refs) == 1:
-        outcome, outcome_errors = summarize(refs[0], request, base_dir)
-        errors.extend(outcome_errors)
-    elif len(refs) > 1:
-        errors.append("active QUINTE binding accepts exactly one product result")
-    status = (
-        "invalid"
-        if errors
-        else "missing"
-        if required and outcome is None
-        else "not_required"
-        if outcome is None
-        else "complete"
-        if outcome.get("status") == "completed"
-        else "blocked"
-    )
+    if len(qrefs) == 1:
+        summary, product_errors = summarize(qrefs[0], request, base_dir)
+        errors.extend(product_errors)
+        if summary is not None:
+            outcome = {
+                "product_ref": summary["result_ref"],
+                "product_kind": "QUINTE",
+                "product_version": summary["result_version"],
+                "product_sha256": summary["result_sha256"],
+                "product_id": summary["run_id"],
+                "status": summary["status"],
+                "decision": "PASS" if summary["status"] == "completed" else "BLOCK",
+                "question": summary["question"],
+                "action_scope": summary["action_scope"],
+                "affected_paths": summary["affected_paths"],
+                "action_binding_sha256": summary["action_binding_sha256"],
+            }
+    elif len(mrefs) == 1:
+        outcome, product_errors = summarize_magi(mrefs[0], request, base_dir)
+        errors.extend(product_errors)
+    status = "invalid" if errors else "missing" if required and outcome is None else "not_required" if outcome is None else "complete"
     return {
         "required": required,
         "status": status,
-        "binding": "atomic_quinte_outcome" if required or refs else "not_applicable",
-        "quinte_outcome": outcome,
+        "binding": f"atomic_{expected.lower()}_product" if expected else "not_applicable",
+        "product": outcome,
         "errors": errors,
     }

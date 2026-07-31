@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Atomically consume one action-bound KENGEN authorization."""
+"""Atomically consume one action-bound user authorization."""
 
 from __future__ import annotations
 
@@ -29,8 +29,8 @@ ROUTER = load_module("route_residual_action", ROOT / "bin" / "route-residual-act
 def default_ledger() -> Path:
     state_home = os.environ.get("XDG_STATE_HOME")
     if state_home:
-        return Path(state_home) / "highball" / "kengen-consumed"
-    return Path.home() / ".local" / "state" / "highball" / "kengen-consumed"
+        return Path(state_home) / "highball" / "authorization-consumed"
+    return Path.home() / ".local" / "state" / "highball" / "authorization-consumed"
 
 
 def safe_component(value: str) -> str:
@@ -61,7 +61,7 @@ def atomic_consume(ledger: Path, authorization_id: str, record: dict[str, Any]) 
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Consume a KENGEN authorization exactly once")
+    parser = argparse.ArgumentParser(description="Consume a user authorization exactly once")
     parser.add_argument("route_request", type=Path)
     parser.add_argument("authorization", type=Path)
     parser.add_argument("--ledger", type=Path, default=None, help=argparse.SUPPRESS)
@@ -75,11 +75,11 @@ def main() -> int:
             raise ValueError("; ".join(request_errors))
         raw = args.authorization.read_bytes()
         artifact = json.loads(raw.decode("utf-8"))
-        errors = CONTRACTS.validate_kengen_artifact(artifact, request)
+        errors = CONTRACTS.validate_authorization_artifact(artifact, request)
         if errors:
             raise ValueError("; ".join(errors))
         record = {
-            "consumption_version": CONTRACTS.KENGEN_CONSUMPTION_VERSION,
+            "consumption_version": CONTRACTS.AUTHORIZATION_CONSUMPTION_VERSION,
             "authorization_id": artifact["authorization_id"],
             "authorization_sha256": CONTRACTS.sha256_bytes(raw),
             "action_binding_sha256": CONTRACTS.action_binding_sha256(request),
@@ -87,12 +87,12 @@ def main() -> int:
         ledger = args.ledger.resolve() if args.ledger is not None and os.environ.get("HIGHBALL_TESTING") == "1" else default_ledger().resolve()
         claim = atomic_consume(ledger, artifact["authorization_id"], record)
     except FileExistsError:
-        print("[KENGEN] BLOCK: authorization was already consumed", file=sys.stderr)
+        print("[AUTHORIZATION] BLOCK: authorization was already consumed", file=sys.stderr)
         return 1
     except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        print(f"[KENGEN] ERROR: {exc}", file=sys.stderr)
+        print(f"[AUTHORIZATION] ERROR: {exc}", file=sys.stderr)
         return 2
-    print(f"[KENGEN] authorization consumed: {claim}")
+    print(f"[AUTHORIZATION] authorization consumed: {claim}")
     return 0
 
 

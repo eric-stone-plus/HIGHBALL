@@ -26,7 +26,8 @@ CHANGE_CLASSES = {
 RISKS = {"LOW", "MEDIUM", "HIGH", "CRITICAL", "P0"}
 TRACE_GATES = {"unknown", "pass", "review", "block"}
 HUMAN_REVIEW_CLASSES = {"credential", "deletion", "deployment", "financial", "legal"}
-QUINTE_CLASSES = {"protocol", "architecture"}
+MAGI_CLASSES = {"architecture"}
+QUINTE_CLASSES = {"protocol"}
 HIGH_RISKS = {"HIGH", "CRITICAL", "P0"}
 REQUEST_FIELDS = {
     "question",
@@ -92,7 +93,7 @@ def route_request(request: dict[str, Any]) -> dict[str, Any]:
     reasons: list[str] = []
     required_artifacts: list[str] = []
     residual_trace_required = True
-    kengen_authorization_required = False
+    authorization_required = False
 
     if trace_quality_gate == "block":
         route = "block"
@@ -107,15 +108,25 @@ def route_request(request: dict[str, Any]) -> dict[str, Any]:
         reasons.append(f"{change_class} change requires human review")
         required_artifacts.append("scoped human decision, waiver, or block record")
     elif action_boundary == "irreversible":
-        route = "QUINTE"
-        reasons.append("irreversible boundary requires adversarial residual exposure")
-        required_artifacts.append("QUINTE residual closure trace")
-        required_artifacts.append("completed atomic QUINTE product outcome")
+        route = "MAGI"
+        reasons.append("irreversible boundary requires cross-family verification and final adjudication")
+        required_artifacts.append("MAGI residual trace")
+        required_artifacts.append("completed atomic MAGI product summary")
+    elif action_boundary == "protected_write" and risk in HIGH_RISKS:
+        route = "MAGI"
+        reasons.append("high-risk protected write requires cross-family verification and final adjudication")
+        required_artifacts.append("MAGI residual trace")
+        required_artifacts.append("completed atomic MAGI product summary")
     elif action_boundary == "protected_write":
         route = "QUINTE"
-        reasons.append("protected write requires QUINTE residual trace before action")
+        reasons.append("bounded protected write requires single-family adversarial review")
         required_artifacts.append("QUINTE residual closure trace")
         required_artifacts.append("completed atomic QUINTE product outcome")
+    elif change_class in MAGI_CLASSES:
+        route = "MAGI"
+        reasons.append("architecture decision requires cross-family verification and final adjudication")
+        required_artifacts.append("MAGI residual trace")
+        required_artifacts.append("completed atomic MAGI product summary")
     elif change_class in QUINTE_CLASSES:
         route = "QUINTE"
         reasons.append(f"{change_class} change requires adversarial review")
@@ -126,31 +137,35 @@ def route_request(request: dict[str, Any]) -> dict[str, Any]:
         reasons.append("claim is executable or source-verifiable")
         required_artifacts.append("file, command, runtime, source, or user evidence trace")
     elif risk in {"LOW", "MEDIUM"}:
-        route = "MAGI"
-        reasons.append("low or medium risk is suitable for triadic convergence/divergence review")
-        required_artifacts.append("MAGI residual trace")
-    elif risk in HIGH_RISKS:
         route = "QUINTE"
-        reasons.append("high risk requires adversarial residual exposure")
+        reasons.append("non-executable judgment requires bounded adversarial review")
         required_artifacts.append("QUINTE residual closure trace")
         required_artifacts.append("completed atomic QUINTE product outcome")
+    elif risk in HIGH_RISKS:
+        route = "MAGI"
+        reasons.append("high risk requires cross-family verification and final adjudication")
+        required_artifacts.append("MAGI residual trace")
+        required_artifacts.append("completed atomic MAGI product summary")
     else:
         route = "MAGI"
         reasons.append("default independent stability review")
         required_artifacts.append("MAGI residual trace")
 
-    if route == "QUINTE" and not (
+    if route in {"QUINTE", "MAGI"} and not (
         isinstance(request.get("action_scope"), str)
         and request["action_scope"].strip()
     ):
+        scoped_product = route
         route = "block"
-        reasons.append("QUINTE execution requires a non-empty action scope")
-        required_artifacts.append("explicit action scope bound into the QUINTE brief and result")
+        reasons.append(f"{scoped_product} execution requires a non-empty action scope")
+        required_artifacts.append(
+            f"explicit action scope bound into the {scoped_product} product"
+        )
 
     if change_class in {"deletion", "deployment", "credential", "financial", "legal"}:
-        kengen_authorization_required = True
+        authorization_required = True
     if action_boundary == "irreversible":
-        kengen_authorization_required = True
+        authorization_required = True
 
     if route == "block":
         residual_trace_required = True
@@ -164,7 +179,7 @@ def route_request(request: dict[str, Any]) -> dict[str, Any]:
         "reason": reasons,
         "required_artifacts": required_artifacts,
         "residual_trace_required": residual_trace_required,
-        "kengen_authorization_required": kengen_authorization_required,
+        "authorization_required": authorization_required,
     }
 
 

@@ -57,7 +57,7 @@ Trial scoring does not:
 
 - prove truth
 - authorize action
-- replace BANNIN or KENGEN
+- replace Protected-Write Guard or Authorization Gate
 - compare semantic answer quality
 - reward high residual count without evidence or closure
 - treat expensive debate as better merely because it used more agents

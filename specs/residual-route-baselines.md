@@ -65,7 +65,7 @@ is whether the route produced better residual evidence than the alternatives.
 
 Route baseline reports do not:
 
-- change SHIMEI routing
+- change Product Router routing
 - authorize protected writes, push, deletion, deployment, legal, or financial
   actions
 - replace Action Packets

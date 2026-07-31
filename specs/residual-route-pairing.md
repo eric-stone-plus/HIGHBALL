@@ -104,7 +104,7 @@ Route pairing reports do not:
 
 - dispatch QUINTE, MAGI, direct evidence, or human review
 - authorize protected writes, push, deployment, legal, financial, or deletion actions
-- modify SHIMEI routing
+- modify Product Router routing
 - promote a route policy
 - prove truth
 - replace route calibration, baseline comparison, outcome ledgers, experiment reviews, policy reports, or route change proposals
