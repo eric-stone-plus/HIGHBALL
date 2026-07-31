@@ -51,6 +51,10 @@ The Authorization Gate independently decides whether an external action is
 allowed. The Protected-Write Guard independently checks the current Action
 Packet. Neither becomes a QUINTE or MAGI scheduler.
 
+The guard covers the products' implementation and contract surfaces (`src/`,
+`magi/`, `schemas/`, `container/`, `configs/`, `skills/`, runtime manifests,
+and protocol/control scripts), not only documentation.
+
 Process cleanup remains within each product boundary. Host rules must not scan
 for or kill internal workers by agent name.
 

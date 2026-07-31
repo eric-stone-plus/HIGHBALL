@@ -7,7 +7,9 @@ three technical boundaries and nothing inside an agent runtime:
 - **Authorization Gate** requires explicit user authorization for protected
   external actions.
 - **Protected-Write Guard** validates the current Action Packet before a
-  protected engineering write proceeds.
+  protected engineering write proceeds. Protected product source, schemas,
+  container/runtime configuration, protocol docs, and control scripts are all
+  inside this boundary.
 
 RASHOMON remains the optional theory layer. It does not dispatch work or grant
 permission.
@@ -65,6 +67,8 @@ bash lib/protected-write-guard.sh --check session.log --action-packet packet.jso
 Use `--authorization authorization.json` when the route requires an explicit
 user decision. `bin/consume-authorization.py` atomically consumes that
 short-lived authorization immediately before the external action.
+The guard validates an immutable packet snapshot and consumes only the exact
+authorization digest bound into that snapshot.
 
 The packet is fail-closed: missing, stale, moved, replayed, cross-task,
 same-family-disguised MAGI, incomplete cross-review, non-PASS final judgment,

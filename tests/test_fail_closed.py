@@ -258,6 +258,7 @@ def magi_product(root: Path, req: dict[str, Any], decision: str = "PASS") -> Pat
         "action_scope": req["action_scope"],
         "affected_paths": req["affected_paths"],
         "final_decision": decision,
+        "final_dissent": [],
         "final_verdict_ref": "final/verdict.json",
         "final_verdict_sha256": "sha256:" + "5" * 64,
         "residual_trace_ref": "final/residual-trace.json",
@@ -353,6 +354,29 @@ class FailClosedTests(unittest.TestCase):
         )
         self.assertEqual(CONTRACTS.action_binding_sha256(value), "sha256:7fe45882922fdb9c9dc748dabc2a23b2590187e017b29b73c35ae7f92c320a5e")
 
+    def test_strict_boundary_rejects_empty_or_duplicate_affected_paths(self) -> None:
+        empty = request(affected_paths=[])
+        duplicate = request(affected_paths=["HIGHBALL/bin/tool.py", "HIGHBALL/bin/tool.py"])
+        self.assertTrue(any("at least one affected path" in error for error in BUILDER.ROUTER.validate_request(empty)))
+        self.assertTrue(any("must not contain duplicates" in error for error in BUILDER.ROUTER.validate_request(duplicate)))
+
+    def test_product_router_matrix_preserves_atomic_boundaries(self) -> None:
+        cases = [
+            (request(action_boundary="reversible", risk="LOW", executable=True), "direct-evidence", False),
+            (request(action_boundary="protected_write", risk="MEDIUM"), "QUINTE", False),
+            (request(action_boundary="protected_write", risk="HIGH"), "MAGI", False),
+            (request(action_boundary="none", change_class="protocol", risk="LOW"), "QUINTE", False),
+            (request(action_boundary="none", change_class="architecture", risk="LOW"), "MAGI", False),
+            (request(action_boundary="reversible", change_class="credential", risk="LOW"), "human-review", True),
+            (request(action_boundary="irreversible", risk="HIGH"), "MAGI", True),
+            (request(trace_quality_gate="block"), "block", False),
+        ]
+        for req, expected_route, expected_authorization in cases:
+            with self.subTest(route=expected_route, request=req):
+                decision = BUILDER.ROUTER.route_request(req)
+                self.assertEqual(decision["route"], expected_route)
+                self.assertEqual(decision["authorization_required"], expected_authorization)
+
     def test_route_trace_mismatch_blocks_without_result(self) -> None:
         req = request()
         packet = self.build(req, trace(req, instrument="MAGI"))
@@ -398,7 +422,27 @@ class FailClosedTests(unittest.TestCase):
         packet = self.build(req, tr, magi=magi_product(self.root, req))
         self.assertEqual(packet["product_evidence"]["status"], "complete")
         self.assertEqual(packet["product_evidence"]["product"]["product_kind"], "MAGI")
-        self.assertNotEqual(packet["action_decision"], "block")
+        self.assertEqual(packet["action_decision"], "review")
+        self.assertTrue(any("quality gate is review" in reason for reason in packet["decision_reasons"]))
+
+    def test_magi_product_accepts_digest_bound_final_dissent(self) -> None:
+        req = request(change_class="architecture")
+        trial = magi_product(self.root, req)
+        summary_path = trial / "product-summary.json"
+        summary = json.loads(summary_path.read_text())
+        summary["final_dissent"] = ["material dissent preserved"]
+        identity = {key: value for key, value in summary.items() if key != "product_sha256"}
+        summary["product_sha256"] = CONTRACTS.sha256_bytes(
+            json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        )
+        write(summary_path, summary)
+        tr = trace(req, instrument="MAGI")
+        tr["trial_manifest"]["base_model_relation"] = "heterogeneous_models"
+        tr["trial_manifest"]["perspective_count"] = 3
+        tr["trial_manifest"]["perspectives"] = tr["trial_manifest"]["perspectives"][:3]
+        packet = self.build(req, tr, magi=trial)
+        self.assertEqual(packet["product_evidence"]["status"], "complete")
+        self.assertEqual(packet["product_evidence"]["errors"], [])
 
     def test_completed_magi_block_and_escalate_are_valid_but_non_authorizing(self) -> None:
         req = request(change_class="architecture")
@@ -458,6 +502,29 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(packet["product_evidence"]["status"], "invalid")
         self.assertTrue(any("distinct model families" in error for error in packet["product_evidence"]["errors"]))
 
+    def test_magi_malformed_seat_and_review_bindings_are_rejected(self) -> None:
+        req = request(change_class="architecture")
+        trial = magi_product(self.root, req)
+        summary_path = trial / "product-summary.json"
+        summary = json.loads(summary_path.read_text())
+        summary["seats"][1]["seat_id"] = summary["seats"][0]["seat_id"]
+        summary["seats"][2]["profile_sha256"] = "not-a-digest"
+        summary["cross_reviews"][1]["artifact_ref"] = summary["cross_reviews"][0]["artifact_ref"]
+        summary["cross_reviews"][2]["sha256"] = "not-a-digest"
+        identity = {key: value for key, value in summary.items() if key != "product_sha256"}
+        summary["product_sha256"] = CONTRACTS.sha256_bytes(
+            json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+        )
+        write(summary_path, summary)
+        tr = trace(req, instrument="MAGI")
+        packet = self.build(req, tr, magi=trial)
+        errors = packet["product_evidence"]["errors"]
+        self.assertEqual(packet["product_evidence"]["status"], "invalid")
+        self.assertTrue(any("distinct seat IDs" in error for error in errors))
+        self.assertTrue(any("profile_sha256 is invalid" in error for error in errors))
+        self.assertTrue(any("six distinct cross-review refs" in error for error in errors))
+        self.assertTrue(any("cross_reviews[2].sha256 is invalid" in error for error in errors))
+
     def test_wrong_atomic_product_kind_is_rejected(self) -> None:
         req = request(change_class="architecture")
         tr = trace(req, instrument="MAGI")
@@ -489,6 +556,41 @@ class FailClosedTests(unittest.TestCase):
         env = {**os.environ, "HIGHBALL_TESTING": "1"}
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 0)
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 1)
+
+    def test_authorization_consume_rejects_packet_digest_drift(self) -> None:
+        req = request(change_class="credential")
+        req_path, auth_path = self.root / "request.json", self.root / "auth.json"
+        write(req_path, req)
+        now = datetime.now(timezone.utc)
+        write(auth_path, {
+            "authorization_version": "1.0",
+            "authorization_id": "auth-digest-bound",
+            "authorized_by": "user",
+            "decision": "authorize",
+            "action_binding_sha256": CONTRACTS.action_binding_sha256(req),
+            "action_scope": req["action_scope"],
+            "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expires_at": (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+        command = [
+            sys.executable,
+            str(ROOT / "bin" / "consume-authorization.py"),
+            str(req_path),
+            str(auth_path),
+            "--expected-sha256",
+            "sha256:" + "0" * 64,
+            "--ledger",
+            str(self.root / "ledger"),
+        ]
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            env={**os.environ, "HIGHBALL_TESTING": "1"},
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("authorization digest does not match", completed.stderr)
+        self.assertFalse((self.root / "ledger").exists())
 
     def test_validator_recomputes_tampered_packet(self) -> None:
         req = request()
@@ -525,6 +627,19 @@ class FailClosedTests(unittest.TestCase):
         command = ["bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check", str(log), "--action-packet", str(self.root / "missing.json")]
         self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
 
+    def test_protected_write_guard_covers_product_source_and_container_files(self) -> None:
+        command_base = [
+            "bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check",
+        ]
+        for index, protected_path in enumerate(
+            ("QUINTE/src/run.rs", "MAGI/magi/runtime.py", "MAGI/container/compose.yml")
+        ):
+            with self.subTest(path=protected_path):
+                log = self.root / f"session-{index}.log"
+                log.write_text(f"write {protected_path}\n", encoding="utf-8")
+                command = [*command_base, str(log), "--action-packet", str(self.root / "missing.json")]
+                self.assertEqual(subprocess.run(command, capture_output=True).returncode, 1)
+
     def test_protected_write_guard_consumes_authorization_before_pass_and_blocks_replay(self) -> None:
         req = request(action_boundary="reversible", change_class="credential", risk="LOW")
         tr = trace(req, instrument="human")
@@ -552,6 +667,42 @@ class FailClosedTests(unittest.TestCase):
         env = {**os.environ, "HOME": str(self.root / "home")}
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 0)
         self.assertEqual(subprocess.run(command, capture_output=True, env=env).returncode, 1)
+
+    def test_protected_write_guard_rejects_changed_authorization_bytes(self) -> None:
+        req = request(action_boundary="reversible", change_class="credential", risk="LOW")
+        tr = trace(req, instrument="human")
+        tr.pop("trial_manifest")
+        now = datetime.now(timezone.utc)
+        auth = self.root / "authorization.json"
+        write(auth, {
+            "authorization_version": "1.0",
+            "authorization_id": "protected-write-guard-drift",
+            "authorized_by": "user",
+            "decision": "authorize",
+            "action_binding_sha256": CONTRACTS.action_binding_sha256(req),
+            "action_scope": req["action_scope"],
+            "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expires_at": (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+        packet = self.build(req, tr, auth=auth)
+        packet["authorization"]["artifact_ref"] = auth.name
+        packet_path = self.root / "packet.json"
+        write(packet_path, packet)
+        auth.write_text(auth.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        log = self.root / "session.log"
+        log.write_text("write HIGHBALL/bin/tool.py\n", encoding="utf-8")
+        command = [
+            "bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check", str(log),
+            "--action-packet", str(packet_path),
+        ]
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            env={**os.environ, "HOME": str(self.root / "home")},
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn("does not authorize", completed.stderr)
 
 
 if __name__ == "__main__":

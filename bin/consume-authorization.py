@@ -64,6 +64,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Consume a user authorization exactly once")
     parser.add_argument("route_request", type=Path)
     parser.add_argument("authorization", type=Path)
+    parser.add_argument(
+        "--expected-sha256",
+        help="Require the authorization bytes to match the digest bound into the Action Packet",
+    )
     parser.add_argument("--ledger", type=Path, default=None, help=argparse.SUPPRESS)
     args = parser.parse_args()
     try:
@@ -74,6 +78,12 @@ def main() -> int:
         if request_errors:
             raise ValueError("; ".join(request_errors))
         raw = args.authorization.read_bytes()
+        actual_sha256 = CONTRACTS.sha256_bytes(raw)
+        if args.expected_sha256 is not None:
+            if not CONTRACTS.is_digest(args.expected_sha256):
+                raise ValueError("expected authorization digest is invalid")
+            if actual_sha256 != args.expected_sha256:
+                raise ValueError("authorization digest does not match the Action Packet")
         artifact = json.loads(raw.decode("utf-8"))
         errors = CONTRACTS.validate_authorization_artifact(artifact, request)
         if errors:
@@ -81,7 +91,7 @@ def main() -> int:
         record = {
             "consumption_version": CONTRACTS.AUTHORIZATION_CONSUMPTION_VERSION,
             "authorization_id": artifact["authorization_id"],
-            "authorization_sha256": CONTRACTS.sha256_bytes(raw),
+            "authorization_sha256": actual_sha256,
             "action_binding_sha256": CONTRACTS.action_binding_sha256(request),
         }
         ledger = args.ledger.resolve() if args.ledger is not None and os.environ.get("HIGHBALL_TESTING") == "1" else default_ledger().resolve()

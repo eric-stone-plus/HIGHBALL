@@ -63,8 +63,14 @@ def validate_request(request: dict[str, Any]) -> list[str]:
         errors.append("action_boundary is invalid")
     if request.get("change_class") not in CHANGE_CLASSES:
         errors.append("change_class is invalid")
-    if not isinstance(request.get("affected_paths"), list) or not all(isinstance(item, str) for item in request["affected_paths"]):
-        errors.append("affected_paths must be an array of strings")
+    if not isinstance(request.get("affected_paths"), list) or not all(
+        isinstance(item, str) and bool(item.strip()) for item in request["affected_paths"]
+    ):
+        errors.append("affected_paths must be an array of non-empty strings")
+    elif request["action_boundary"] in {"protected_write", "irreversible"} and not request["affected_paths"]:
+        errors.append("strict action boundaries require at least one affected path")
+    elif len(set(request["affected_paths"])) != len(request["affected_paths"]):
+        errors.append("affected_paths must not contain duplicates")
     if "action_scope" not in request or (
         request.get("action_scope") is not None
         and not isinstance(request.get("action_scope"), str)

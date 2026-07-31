@@ -15,6 +15,8 @@ action. It contains:
 `action_binding_sha256` is the canonical, sorted-key, whitespace-free UTF-8
 JSON digest of `question`, `action_boundary`, `change_class`, and ordered
 `affected_paths`. `action_scope` is compared exactly with the selected product.
+Strict (`protected_write` or `irreversible`) boundaries require at least one
+unique, non-empty affected path.
 
 Cross-task, moved, tampered, stale, or scope-drifted products block.
 
@@ -41,7 +43,10 @@ binding.
 Protected external actions may require `--authorization`. The artifact records
 one user decision, exact action binding and scope, unique ID, and an issue/expiry
 window no longer than eight hours. `bin/consume-authorization.py` atomically
-consumes it immediately before the action; replay blocks.
+consumes it immediately before the action; replay blocks. The Protected-Write
+Guard validates an immutable Action Packet snapshot and requires the consumed
+authorization bytes to match the `artifact_sha256` recorded in that snapshot.
+Replacing either file after packet creation therefore fails closed.
 
 ## Decision
 

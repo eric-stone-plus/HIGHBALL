@@ -523,6 +523,11 @@ def validate_packet(packet: Any, base_dir: Path | None = None) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate a HIGHBALL Action Packet")
     parser.add_argument("packet_file", type=Path)
+    parser.add_argument(
+        "--base-dir",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
     args = parser.parse_args()
 
     try:
@@ -531,7 +536,8 @@ def main() -> int:
         print(f"[HIGHBALL] ERROR: {exc}", file=sys.stderr)
         return 2
 
-    errors = validate_packet(packet, base_dir=args.packet_file.resolve().parent)
+    base_dir = args.base_dir.resolve() if args.base_dir is not None else args.packet_file.resolve().parent
+    errors = validate_packet(packet, base_dir=base_dir)
     if errors:
         for error in errors:
             print(f"[HIGHBALL] ERROR: {error}", file=sys.stderr)

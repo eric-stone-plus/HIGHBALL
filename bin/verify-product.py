@@ -126,6 +126,21 @@ ROUTE_BINDING_FIELDS = {
     "multimodal_model",
     "perspective",
 }
+MAGI_SEAT_FIELDS = {
+    "seat_id",
+    "family",
+    "provider",
+    "text_model",
+    "multimodal_model",
+    "profile_sha256",
+    "thesis_sha256",
+    "dossier_ref",
+    "dossier_sha256",
+    "quinte_run_id",
+    "quinte_manifest_sha256",
+    "quinte_result_sha256",
+}
+MAGI_REVIEW_FIELDS = {"artifact_ref", "sha256"}
 
 
 def trusted_runs_root() -> Path:
@@ -547,7 +562,7 @@ def summarize_magi(
         "product_version", "product_sha256", "trial_id", "status", "runtime_sha256",
         "agent_config_sha256", "builder_config_sha256", "original_brief_sha256",
         "action_binding_sha256", "question", "action_scope", "affected_paths",
-        "final_decision", "final_verdict_ref", "final_verdict_sha256",
+        "final_decision", "final_dissent", "final_verdict_ref", "final_verdict_sha256",
         "residual_trace_ref", "residual_trace_sha256", "seats", "cross_reviews",
     }
     exact_fields(product, required, "MAGI product summary", errors)
@@ -557,17 +572,30 @@ def summarize_magi(
         errors.append("MAGI product is not completed")
     if product.get("final_decision") not in {"PASS", "BLOCK", "ESCALATE"}:
         errors.append("MAGI final decision is invalid")
+    if not string_list(product.get("final_dissent"), nonempty_items=True):
+        errors.append("MAGI final dissent must be an array of non-empty strings")
+    for field in ("trial_id", "question", "final_verdict_ref", "residual_trace_ref"):
+        if not nonempty(product.get(field)):
+            errors.append(f"MAGI product {field} must be a non-empty string")
+    if product.get("action_scope") is not None and not isinstance(product.get("action_scope"), str):
+        errors.append("MAGI product action_scope must be a string or null")
+    if not string_list(product.get("affected_paths"), nonempty_items=True):
+        errors.append("MAGI product affected_paths must be an array of non-empty strings")
     identity = {key: value for key, value in product.items() if key != "product_sha256"}
     encoded = json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     if product.get("product_sha256") != CONTRACTS.sha256_bytes(encoded):
         errors.append("MAGI product summary digest is invalid")
     for field in (
         "product_sha256", "runtime_sha256", "agent_config_sha256",
-        "builder_config_sha256", "original_brief_sha256", "action_binding_sha256",
-        "final_verdict_sha256", "residual_trace_sha256",
+        "original_brief_sha256", "action_binding_sha256", "final_verdict_sha256",
+        "residual_trace_sha256",
     ):
         if not CONTRACTS.is_digest(product.get(field)):
             errors.append(f"MAGI product {field} is invalid")
+    if product.get("builder_config_sha256") is not None and not CONTRACTS.is_digest(
+        product.get("builder_config_sha256")
+    ):
+        errors.append("MAGI product builder_config_sha256 is invalid")
     if product.get("action_binding_sha256") != CONTRACTS.action_binding_sha256(request):
         errors.append("MAGI action binding does not match the route request")
     for field in ("question", "action_scope", "affected_paths"):
@@ -577,18 +605,68 @@ def summarize_magi(
     if not isinstance(seats, list) or len(seats) != 3:
         errors.append("MAGI product must contain exactly three seats")
     else:
-        families = [item.get("family") for item in seats if isinstance(item, dict)]
-        profiles = [item.get("profile_sha256") for item in seats if isinstance(item, dict)]
-        runs = [item.get("quinte_run_id") for item in seats if isinstance(item, dict)]
+        seat_ids: list[str] = []
+        families: list[str] = []
+        profiles: list[str] = []
+        runs: list[str] = []
+        dossier_refs: list[str] = []
+        for index, item in enumerate(seats):
+            label = f"MAGI product seats[{index}]"
+            if not isinstance(item, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            exact_fields(item, MAGI_SEAT_FIELDS, label, errors)
+            for field in (
+                "seat_id", "family", "provider", "text_model", "multimodal_model",
+                "dossier_ref", "quinte_run_id",
+            ):
+                if not nonempty(item.get(field)):
+                    errors.append(f"{label}.{field} must be a non-empty string")
+            for field in (
+                "profile_sha256", "thesis_sha256", "dossier_sha256",
+                "quinte_manifest_sha256", "quinte_result_sha256",
+            ):
+                if not CONTRACTS.is_digest(item.get(field)):
+                    errors.append(f"{label}.{field} is invalid")
+            if nonempty(item.get("seat_id")):
+                seat_ids.append(item["seat_id"])
+            if nonempty(item.get("family")):
+                families.append(item["family"])
+            if CONTRACTS.is_digest(item.get("profile_sha256")):
+                profiles.append(item["profile_sha256"])
+            if nonempty(item.get("quinte_run_id")):
+                runs.append(item["quinte_run_id"])
+            if nonempty(item.get("dossier_ref")):
+                dossier_refs.append(item["dossier_ref"])
+        if len(seat_ids) != 3 or len(set(seat_ids)) != 3:
+            errors.append("MAGI product must contain three distinct seat IDs")
         if len(families) != 3 or len(set(families)) != 3:
             errors.append("MAGI product must contain three distinct model families")
         if len(profiles) != 3 or len(set(profiles)) != 3:
             errors.append("MAGI product must contain three distinct profile digests")
         if len(runs) != 3 or len(set(runs)) != 3:
             errors.append("MAGI product must contain three distinct QUINTE runs")
+        if len(dossier_refs) != 3 or len(set(dossier_refs)) != 3:
+            errors.append("MAGI product must contain three distinct dossier refs")
     reviews = product.get("cross_reviews")
     if not isinstance(reviews, list) or len(reviews) != 6:
         errors.append("MAGI product must contain all six directed cross-reviews")
+    else:
+        review_refs: list[str] = []
+        for index, item in enumerate(reviews):
+            label = f"MAGI product cross_reviews[{index}]"
+            if not isinstance(item, dict):
+                errors.append(f"{label} must be an object")
+                continue
+            exact_fields(item, MAGI_REVIEW_FIELDS, label, errors)
+            if not nonempty(item.get("artifact_ref")):
+                errors.append(f"{label}.artifact_ref must be a non-empty string")
+            else:
+                review_refs.append(item["artifact_ref"])
+            if not CONTRACTS.is_digest(item.get("sha256")):
+                errors.append(f"{label}.sha256 is invalid")
+        if len(review_refs) != 6 or len(set(review_refs)) != 6:
+            errors.append("MAGI product must contain six distinct cross-review refs")
     outcome = {
         "product_ref": str(trial),
         "product_kind": "MAGI",

@@ -109,8 +109,10 @@
         },
         "affected_paths": {
           "type": "array",
+          "uniqueItems": true,
           "items": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           }
         },
         "executable": {
@@ -147,6 +149,25 @@
           "maxLength": 2000
         }
       },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action_boundary": {
+                "enum": ["protected_write", "irreversible"]
+              }
+            },
+            "required": ["action_boundary"]
+          },
+          "then": {
+            "properties": {
+              "affected_paths": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
       "additionalProperties": false
     },
     "routeDecision": {
