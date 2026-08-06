@@ -539,7 +539,33 @@
         "action_binding_sha256": {
           "type": "string",
           "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "host_receipt_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "host_receipt_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "host_receipt_operation": {
+          "type": "string",
+          "enum": ["inspect", "reconcile"]
         }
+      },
+      "dependentRequired": {
+        "host_receipt_ref": [
+          "host_receipt_sha256",
+          "host_receipt_operation"
+        ],
+        "host_receipt_sha256": [
+          "host_receipt_ref",
+          "host_receipt_operation"
+        ],
+        "host_receipt_operation": [
+          "host_receipt_ref",
+          "host_receipt_sha256"
+        ]
       },
       "allOf": [
         {

@@ -28,6 +28,18 @@ identity, installed runtime digest, `quinte inspect`, five R1/R2 lane artifact
 pairs, and all seven same-family route bindings. HIGHBALL does not schedule a
 lane.
 
+`--quinte-receipt` is the host-integrated binding. It accepts one durable
+`host/receipts/<invocation-id>.json` file or a saved successful
+`quinte host inspect --json` envelope. The embedded `receipt_path`, invocation
+identity, state root, run identity, manifest/result digest, and verified result
+binding must all agree with the canonical QUINTE run bundle. Only `inspect` and
+`reconcile` receipts with `result.verified=true` are eligible; `start`,
+`preflight`, and `status` receipts are observation-only and are rejected for
+product authorization. HIGHBALL validates the bound product locally with no
+QUINTE subprocess, retry, resume, polling loop, or scheduling side effect.
+Receipt provenance is retained in `product_evidence.product` as
+`host_receipt_ref`, `host_receipt_sha256`, and `host_receipt_operation`.
+
 ## MAGI Binding
 
 `--magi-trial` invokes `magi verify-product` and binds its closed product

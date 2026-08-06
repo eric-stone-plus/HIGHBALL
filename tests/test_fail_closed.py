@@ -37,6 +37,17 @@ EXECUTION_VALIDATOR = load_module("test_execution_validator", ROOT / "bin" / "va
 
 
 class ContractSchemaTests(unittest.TestCase):
+    def test_host_uuid_helper_accepts_only_canonical_uuidv7(self) -> None:
+        self.assertTrue(
+            PRODUCT.is_canonical_uuid_v7("018f47a2-4b5c-7d6e-8f90-123456789abc")
+        )
+        self.assertFalse(
+            PRODUCT.is_canonical_uuid_v7("018f47a2-4b5c-1d6e-8f90-123456789abc")
+        )
+        self.assertFalse(
+            PRODUCT.is_canonical_uuid_v7("018F47A2-4B5C-7D6E-8F90-123456789ABC")
+        )
+
     def test_action_packet_schema_matches_active_product_decisions(self) -> None:
         schema = json.loads((ROOT / "schemas" / "action-packet.schema.json").read_text())
         self.assertEqual(schema["properties"]["packet_version"]["const"], CONTRACTS.ACTION_PACKET_VERSION)
@@ -46,6 +57,14 @@ class ContractSchemaTests(unittest.TestCase):
         conditional = product["allOf"][0]
         self.assertEqual(conditional["if"]["properties"]["product_kind"]["const"], "QUINTE")
         self.assertEqual(conditional["then"]["properties"]["decision"]["const"], "PASS")
+        self.assertEqual(
+            product["dependentRequired"],
+            {
+                "host_receipt_ref": ["host_receipt_sha256", "host_receipt_operation"],
+                "host_receipt_sha256": ["host_receipt_ref", "host_receipt_operation"],
+                "host_receipt_operation": ["host_receipt_ref", "host_receipt_sha256"],
+            },
+        )
 
         try:
             import jsonschema
@@ -661,12 +680,16 @@ class FailClosedTests(unittest.TestCase):
         self.magi_binary.chmod(0o755)
         os.environ["PATH"] = str(self.binary.parent) + os.pathsep + self.old_path
         self.old_runs_root = PRODUCT.trusted_runs_root
+        self.old_builder_runs_root = BUILDER.PRODUCT.trusted_runs_root
+        self.old_validator_runs_root = VALIDATOR.PRODUCT.trusted_runs_root
         self.old_binary = PRODUCT.active_quinte_binary
         self.old_magi_binary = PRODUCT.active_magi_binary
         self.old_builder_magi_binary = BUILDER.PRODUCT.active_magi_binary
         self.old_validator_magi_binary = VALIDATOR.PRODUCT.active_magi_binary
         self.old_execution_magi_binary = EXECUTION_BUILDER.ACTION_PACKET.PRODUCT.active_magi_binary
         PRODUCT.trusted_runs_root = lambda: (self.root / "quinte" / "runs").resolve()
+        BUILDER.PRODUCT.trusted_runs_root = lambda: (self.root / "quinte" / "runs").resolve()
+        VALIDATOR.PRODUCT.trusted_runs_root = lambda: (self.root / "quinte" / "runs").resolve()
         PRODUCT.active_quinte_binary = lambda: self.binary.resolve()
         PRODUCT.active_magi_binary = lambda: self.magi_binary.resolve()
         BUILDER.PRODUCT.active_magi_binary = lambda: self.magi_binary.resolve()
@@ -676,6 +699,8 @@ class FailClosedTests(unittest.TestCase):
     def tearDown(self) -> None:
         os.environ["PATH"] = self.old_path
         PRODUCT.trusted_runs_root = self.old_runs_root
+        BUILDER.PRODUCT.trusted_runs_root = self.old_builder_runs_root
+        VALIDATOR.PRODUCT.trusted_runs_root = self.old_validator_runs_root
         PRODUCT.active_quinte_binary = self.old_binary
         PRODUCT.active_magi_binary = self.old_magi_binary
         BUILDER.PRODUCT.active_magi_binary = self.old_builder_magi_binary
@@ -683,11 +708,70 @@ class FailClosedTests(unittest.TestCase):
         EXECUTION_BUILDER.ACTION_PACKET.PRODUCT.active_magi_binary = self.old_execution_magi_binary
         self.temp.cleanup()
 
-    def build(self, req: dict[str, Any], tr: dict[str, Any], result: Path | None = None, auth: Path | None = None, magi: Path | None = None) -> dict[str, Any]:
+    def build(
+        self,
+        req: dict[str, Any],
+        tr: dict[str, Any],
+        result: Path | None = None,
+        auth: Path | None = None,
+        magi: Path | None = None,
+        receipt: Path | None = None,
+    ) -> dict[str, Any]:
         req_path, trace_path = self.root / "request.json", self.root / "trace.json"
         write(req_path, req)
         write(trace_path, tr)
-        return BUILDER.build_packet(req_path, trace_path, [result] if result else [], auth, [magi] if magi else [])
+        return BUILDER.build_packet(
+            req_path,
+            trace_path,
+            [result] if result else [],
+            auth,
+            [magi] if magi else [],
+            [receipt] if receipt else [],
+        )
+
+    def host_receipt(self, result_path: Path, *, operation: str = "inspect") -> Path:
+        run_id = json.loads(result_path.read_text())["run_id"]
+        run_dir = result_path.parent
+        manifest = json.loads((run_dir / "manifest.json").read_text())
+        state_root = self.root / "quinte"
+        invocation_id = "019fd896-7769-7c62-a3c3-e4f34fbc09f3"
+        receipt_path = state_root / "host" / "receipts" / f"{invocation_id}.json"
+        receipt = {
+            "host_receipt_version": "1.0",
+            "invocation_id": invocation_id,
+            "receipt_path": str(receipt_path),
+            "operation": operation,
+            "observed_at": "2026-08-07T00:00:00Z",
+            "state_root": str(state_root),
+            "state": {"code": "terminal", "active_run_ids": []},
+            "run_id": run_id,
+            "manifest": {
+                "status": manifest["status"],
+                "manifest_version": manifest["manifest_version"],
+                "brief_sha256": manifest["brief_sha256"],
+                "policy_sha256": manifest["policy_sha256"],
+                "snapshot_sha256": manifest["snapshot_sha256"],
+                "runtime_sha256": manifest["runtime_sha256"],
+                "error": manifest["error"],
+                "result_sha256": manifest["result_sha256"],
+            },
+            "result": {
+                "verified": True,
+                "actionable": True,
+                "contract_version": "2.1",
+                "sha256": manifest["result_sha256"],
+                "path": str(result_path),
+            },
+        }
+        if operation == "reconcile":
+            receipt["state"]["code"] = "reconciled"
+            receipt["recovery"] = {
+                "outcome": "reconciled",
+                "launch_safe": True,
+                "receipt_path": str(receipt_path),
+            }
+        write(receipt_path, receipt)
+        return receipt_path
 
     def test_action_binding_canonical_fixture(self) -> None:
         value = request(question="允许改动吗？", affected_paths=[r"HIGHBALL\bin\tool.py", "a/b.py"])
@@ -733,6 +817,135 @@ class FailClosedTests(unittest.TestCase):
         packet = self.build(req, trace(req), fake)
         self.assertEqual(packet["action_decision"], "block")
         self.assertEqual(packet["product_evidence"]["status"], "invalid")
+
+    def test_host_receipt_binds_product_without_invoking_quinte(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        receipt_path = self.host_receipt(result_path)
+        old_binary = PRODUCT.active_quinte_binary
+        def fail_if_called() -> Path:
+            raise AssertionError("host receipt verification must not invoke quinte")
+        PRODUCT.active_quinte_binary = fail_if_called
+        try:
+            summary, errors = PRODUCT.load_quinte_host_receipt(str(receipt_path), req)
+        finally:
+            PRODUCT.active_quinte_binary = old_binary
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(summary)
+        packet = self.build(req, trace(req), receipt=receipt_path)
+        self.assertEqual(packet["product_evidence"]["status"], "complete")
+        outcome = packet["product_evidence"]["product"]
+        self.assertEqual(outcome["host_receipt_operation"], "inspect")
+        self.assertEqual(outcome["host_receipt_ref"], str(receipt_path.resolve()))
+        self.assertFalse(VALIDATOR.validate_packet(packet, base_dir=self.root))
+
+    def test_saved_host_envelope_reads_its_durable_receipt(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        receipt_path = self.host_receipt(result_path)
+        durable = json.loads(receipt_path.read_text())
+        envelope_path = self.root / "captured" / "inspect.json"
+        write(
+            envelope_path,
+            {"cli_envelope_version": "1.0", "ok": True, "data": durable},
+        )
+        summary, errors = PRODUCT.load_quinte_host_receipt(str(envelope_path), req)
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary["host_receipt_ref"], str(envelope_path.resolve()))
+
+    def test_reconciled_host_receipt_binds_terminal_product(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        receipt_path = self.host_receipt(result_path, operation="reconcile")
+        summary, errors = PRODUCT.load_quinte_host_receipt(str(receipt_path), req)
+        self.assertEqual(errors, [])
+        self.assertIsNotNone(summary)
+        self.assertEqual(summary["host_receipt_operation"], "reconcile")
+
+        packet = self.build(req, trace(req), receipt=receipt_path)
+        self.assertEqual(packet["product_evidence"]["status"], "complete")
+        self.assertEqual(
+            packet["product_evidence"]["product"]["host_receipt_operation"],
+            "reconcile",
+        )
+        self.assertFalse(VALIDATOR.validate_packet(packet, base_dir=self.root))
+
+    def test_reconcile_launch_safe_must_match_active_run_set(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        run_id = result_path.parent.name
+        for name, active_run_ids, launch_safe in (
+            ("active-but-safe", [run_id], True),
+            ("empty-but-unsafe", [], False),
+        ):
+            with self.subTest(case=name):
+                receipt_path = self.host_receipt(result_path, operation="reconcile")
+                receipt = json.loads(receipt_path.read_text())
+                receipt["state"]["active_run_ids"] = active_run_ids
+                receipt["recovery"]["launch_safe"] = launch_safe
+                write(receipt_path, receipt)
+                summary, errors = PRODUCT.load_quinte_host_receipt(
+                    str(receipt_path), req
+                )
+                self.assertIsNone(summary)
+                self.assertTrue(
+                    any(
+                        "recovery.launch_safe does not match active_run_ids" in item
+                        for item in errors
+                    )
+                )
+
+    def test_host_receipt_forbidden_operations_and_unverified_result_fail_closed(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        for operation in ("start", "preflight", "status"):
+            with self.subTest(operation=operation):
+                receipt_path = self.host_receipt(result_path, operation=operation)
+                summary, errors = PRODUCT.load_quinte_host_receipt(str(receipt_path), req)
+                self.assertIsNone(summary)
+                self.assertTrue(any("operation must be inspect or reconcile" in item for item in errors))
+
+        receipt_path = self.host_receipt(result_path)
+        receipt = json.loads(receipt_path.read_text())
+        receipt["result"]["verified"] = False
+        write(receipt_path, receipt)
+        summary, errors = PRODUCT.load_quinte_host_receipt(str(receipt_path), req)
+        self.assertIsNone(summary)
+        self.assertTrue(any("result.verified must be true" in item for item in errors))
+
+    def test_host_receipt_state_root_binding_fails_closed(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        receipt_path = self.host_receipt(result_path)
+        receipt = json.loads(receipt_path.read_text())
+        receipt["state_root"] = str(self.root / "other-quinte")
+        write(receipt_path, receipt)
+        summary, errors = PRODUCT.load_quinte_host_receipt(str(receipt_path), req)
+        self.assertIsNone(summary)
+        self.assertTrue(any("state_root does not match" in item for item in errors))
+
+    def test_host_receipt_rejects_non_v7_and_noncanonical_ids(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        cases = (
+            ("invocation_id", "019fd896-7769-1c62-a3c3-e4f34fbc09f3", "invocation_id must be a canonical UUIDv7"),
+            ("invocation_id", "019FD896-7769-7C62-A3C3-E4F34FBC09F3", "invocation_id must be a canonical UUIDv7"),
+            ("run_id", "019fd896-7769-1c62-a3c3-e4f34fbc09f2", "run_id must be a canonical UUIDv7"),
+            ("active_run_ids", ["019fd896-7769-1c62-a3c3-e4f34fbc09f2"], "active_run_ids must contain canonical UUIDv7"),
+        )
+        for field, replacement, expected in cases:
+            with self.subTest(field=field, replacement=replacement):
+                receipt_path = self.host_receipt(result_path)
+                receipt = json.loads(receipt_path.read_text())
+                if field == "active_run_ids":
+                    receipt["state"][field] = replacement
+                else:
+                    receipt[field] = replacement
+                write(receipt_path, receipt)
+                summary, errors = PRODUCT.load_quinte_host_receipt(str(receipt_path), req)
+                self.assertIsNone(summary)
+                self.assertTrue(any(expected in item for item in errors), errors)
 
     def test_block_and_escalate_decisions_block_empty_residuals(self) -> None:
         req = request()

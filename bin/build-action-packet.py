@@ -166,6 +166,7 @@ def build_packet(
     quinte_results: list[Path] | None = None,
     authorization: Path | None = None,
     magi_trials: list[Path] | None = None,
+    quinte_receipts: list[Path] | None = None,
 ) -> dict[str, Any]:
     request = load_route_request(request_path)
     route_decision = ROUTER.route_request(request)
@@ -173,9 +174,14 @@ def build_packet(
     validation = validate_trace(trace)
     quality = MEASURE.measure_trace(trace)
     result_refs = [str(path.resolve()) for path in (quinte_results or [])]
+    receipt_refs = [str(path.resolve()) for path in (quinte_receipts or [])]
     trial_refs = [str(path.resolve()) for path in (magi_trials or [])]
     product_evidence = PRODUCT.build_product_evidence(
-        request, route_decision, result_refs, trial_refs
+        request,
+        route_decision,
+        result_refs,
+        trial_refs,
+        quinte_receipt_refs=receipt_refs,
     )
     authorization = CONTRACTS.summarize_authorization_artifact(
         str(authorization.resolve()) if authorization else None,
@@ -212,6 +218,13 @@ def main() -> int:
         help="Current QUINTE result.json product bundle to bind",
     )
     parser.add_argument(
+        "--quinte-receipt",
+        action="append",
+        type=Path,
+        default=[],
+        help="Durable QUINTE host receipt or saved host inspect --json envelope to bind",
+    )
+    parser.add_argument(
         "--magi-trial",
         action="append",
         type=Path,
@@ -232,6 +245,7 @@ def main() -> int:
             args.quinte_result,
             args.authorization,
             args.magi_trial,
+            args.quinte_receipt,
         )
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         print(f"[HIGHBALL] ERROR: {exc}", file=sys.stderr)

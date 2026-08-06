@@ -59,6 +59,9 @@ python3 bin/build-action-packet.py request.json trace.json \
   --quinte-result /trusted/quinte/runs/RUN_ID/result.json
 
 python3 bin/build-action-packet.py request.json trace.json \
+  --quinte-receipt /trusted/quinte/host/receipts/INVOCATION_ID.json
+
+python3 bin/build-action-packet.py request.json trace.json \
   --magi-trial /trusted/magi/trials/TRIAL_ID
 
 python3 bin/validate-action-packet.py packet.json
@@ -70,6 +73,14 @@ user decision. `bin/consume-authorization.py` atomically consumes that
 short-lived authorization immediately before the external action.
 The guard validates an immutable packet snapshot and consumes only the exact
 authorization digest bound into that snapshot.
+
+`--quinte-receipt` accepts either a durable QUINTE host receipt or a saved
+`quinte host inspect --json` envelope. HIGHBALL re-reads the durable receipt,
+binds it to the configured QUINTE state root and canonical `result.json`, and
+performs product validation locally. It accepts only verified `inspect` or
+`reconcile` observations; it never invokes `quinte`, starts a run, resumes a
+worker, polls status, or schedules recovery. `--quinte-result` remains
+available for callers that deliberately use the legacy direct result binding.
 
 The packet is fail-closed: missing, stale, moved, replayed, cross-task,
 same-family-disguised MAGI, incomplete cross-review, non-PASS final judgment,

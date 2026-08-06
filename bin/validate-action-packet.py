@@ -115,6 +115,14 @@ PRODUCT_OUTCOME_FIELDS = {
     "action_scope",
     "affected_paths",
     "action_binding_sha256",
+    "host_receipt_ref",
+    "host_receipt_sha256",
+    "host_receipt_operation",
+}
+REQUIRED_PRODUCT_OUTCOME_FIELDS = PRODUCT_OUTCOME_FIELDS - {
+    "host_receipt_ref",
+    "host_receipt_sha256",
+    "host_receipt_operation",
 }
 ROUTES = {"direct-evidence", "MAGI", "QUINTE", "human-review", "block"}
 DECISIONS = {"pass", "review", "block"}
@@ -379,7 +387,7 @@ def validate_shape(packet: Any) -> list[str]:
                 errors.append("product_evidence.product must be an object or null")
             else:
                 unknown_outcome = sorted(set(outcome) - PRODUCT_OUTCOME_FIELDS)
-                missing_outcome = sorted(PRODUCT_OUTCOME_FIELDS - set(outcome))
+                missing_outcome = sorted(REQUIRED_PRODUCT_OUTCOME_FIELDS - set(outcome))
                 if unknown_outcome:
                     errors.append(
                         f"product_evidence.product unknown fields: {', '.join(unknown_outcome)}"
@@ -405,6 +413,33 @@ def validate_shape(packet: Any) -> list[str]:
                 for field in ("product_sha256", "action_binding_sha256"):
                     if not CONTRACTS.is_digest(outcome.get(field)):
                         errors.append(f"product_evidence.product.{field} is invalid")
+                provenance_fields = (
+                    "host_receipt_ref",
+                    "host_receipt_sha256",
+                    "host_receipt_operation",
+                )
+                present_provenance = [field for field in provenance_fields if field in outcome]
+                if present_provenance and len(present_provenance) != len(provenance_fields):
+                    errors.append(
+                        "product_evidence.product host receipt provenance must be complete"
+                    )
+                if outcome.get("product_kind") != "QUINTE" and present_provenance:
+                    errors.append("host receipt provenance is only valid for a QUINTE product")
+                if "host_receipt_ref" in outcome and (
+                    not isinstance(outcome.get("host_receipt_ref"), str)
+                    or not outcome.get("host_receipt_ref", "").strip()
+                ):
+                    errors.append("product_evidence.product.host_receipt_ref must be non-empty")
+                if "host_receipt_sha256" in outcome and not CONTRACTS.is_digest(
+                    outcome.get("host_receipt_sha256")
+                ):
+                    errors.append("product_evidence.product.host_receipt_sha256 is invalid")
+                if "host_receipt_operation" in outcome and outcome.get(
+                    "host_receipt_operation"
+                ) not in CONTRACTS.QUINTE_HOST_RECEIPT_OPERATIONS:
+                    errors.append(
+                        "product_evidence.product.host_receipt_operation must be inspect or reconcile"
+                    )
                 if not isinstance(outcome.get("question"), str) or not outcome.get("question", "").strip():
                     errors.append("product_evidence.product.question must be a non-empty string")
                 if outcome.get("action_scope") is not None and not isinstance(outcome.get("action_scope"), str):
@@ -468,10 +503,15 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
 
     outcome = product_evidence.get("product")
     result_refs: list[str] = []
+    receipt_refs: list[str] = []
     trial_refs: list[str] = []
     if isinstance(outcome, dict) and isinstance(outcome.get("product_ref"), str):
         if outcome.get("product_kind") == "QUINTE":
-            result_refs = [outcome["product_ref"]]
+            receipt_ref = outcome.get("host_receipt_ref")
+            if isinstance(receipt_ref, str) and receipt_ref:
+                receipt_refs = [receipt_ref]
+            else:
+                result_refs = [outcome["product_ref"]]
         elif outcome.get("product_kind") == "MAGI":
             trial_refs = [outcome["product_ref"]]
     expected_execution = PRODUCT.build_product_evidence(
@@ -480,6 +520,7 @@ def validate_consistency(packet: dict[str, Any], base_dir: Path | None = None) -
         result_refs,
         trial_refs,
         base_dir=base_dir,
+        quinte_receipt_refs=receipt_refs,
     )
     if product_evidence != expected_execution:
         errors.append("product_evidence does not match derived product evidence")

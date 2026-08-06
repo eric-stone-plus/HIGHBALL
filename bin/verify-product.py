@@ -114,6 +114,57 @@ PARTIES = [
     "Counterpart Arbiter",
     "Primary Arbiter",
 ]
+HOST_RECEIPT_FIELDS = {
+    "host_receipt_version",
+    "invocation_id",
+    "receipt_path",
+    "operation",
+    "observed_at",
+    "state_root",
+    "state",
+    "run_id",
+    "preflight",
+    "brief",
+    "manifest",
+    "result",
+    "recovery",
+}
+HOST_STATE_FIELDS = {"code", "active_run_ids", "worker", "attempts", "blockers"}
+HOST_STATE_CODES = {
+    "ready",
+    "preflight_failed",
+    "active_run_present",
+    "created",
+    "started",
+    "launch_failed",
+    "observed",
+    "terminal",
+    "reconciled",
+    "no_active_run",
+    "ambiguous_active_runs",
+}
+HOST_MANIFEST_FIELDS = {
+    "status",
+    "manifest_version",
+    "brief_sha256",
+    "policy_sha256",
+    "snapshot_sha256",
+    "runtime_sha256",
+    "worker_pid",
+    "error",
+    "result_sha256",
+}
+HOST_RESULT_FIELDS = {"verified", "actionable", "contract_version", "sha256", "path"}
+HOST_RECOVERY_FIELDS = {"outcome", "launch_safe", "receipt_path"}
+HOST_REQUIRED_MANIFEST_FIELDS = {
+    "status",
+    "manifest_version",
+    "brief_sha256",
+    "policy_sha256",
+    "snapshot_sha256",
+    "runtime_sha256",
+    "result_sha256",
+}
 SEAT_BINDING_FIELDS = {"seat_id", "family", "provider", "text_model", "multimodal_model"}
 ROUTE_BINDING_FIELDS = {
     "party_id",
@@ -411,6 +462,27 @@ def trusted_runs_root() -> Path:
     return (root / "runs").resolve()
 
 
+def is_canonical_uuid_v7(value: Any) -> bool:
+    """Return whether *value* is QUINTE's canonical UUIDv7 spelling.
+
+    Host receipt v1 binds filenames and run identities to the UUIDv7 values
+    emitted by QUINTE.  Keep this stricter check local to the host contract;
+    historical standalone Result validation intentionally retains its older
+    canonical-UUID acceptance range.
+    """
+    if not isinstance(value, str):
+        return False
+    try:
+        parsed = uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return (
+        parsed.version == 7
+        and parsed.variant == uuid.RFC_4122
+        and str(parsed) == value
+    )
+
+
 def active_quinte_binary() -> Path | None:
     configured = os.environ.get("HIGHBALL_QUINTE_BIN")
     candidates = [Path(configured).expanduser()] if configured else []
@@ -637,6 +709,313 @@ def resolve_ref(ref: str, base_dir: Path | None) -> Path:
     if not path.is_absolute() and base_dir is not None:
         path = base_dir / path
     return path.resolve()
+
+
+def _path_is_within(root: Path, candidate: Path) -> bool:
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return False
+    return True
+
+
+def load_quinte_host_receipt(
+    ref: str,
+    request: dict[str, Any],
+    *,
+    base_dir: Path | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    """Read a durable receipt or a saved `host inspect --json` envelope.
+
+    HIGHBALL intentionally performs no QUINTE command.  The receipt is an
+    observation supplied by the caller; all product files are re-read and
+    checked below before they can enter an Action Packet.
+    """
+    errors: list[str] = []
+    supplied = resolve_ref(ref, base_dir)
+    if not supplied.is_file():
+        return None, [f"QUINTE host receipt does not exist: {ref}"]
+    supplied_raw: bytes
+    try:
+        supplied_raw = supplied.read_bytes()
+    except OSError as exc:
+        return None, [f"QUINTE host receipt cannot be read: {exc}"]
+    try:
+        parsed = json.loads(supplied_raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        return None, [f"QUINTE host receipt is not valid JSON: {exc}"]
+    if not isinstance(parsed, dict):
+        return None, ["QUINTE host receipt must be a JSON object"]
+
+    # A captured CLI response is accepted only when its envelope is current;
+    # the embedded durable receipt remains the authority and is re-read by
+    # receipt_path.  A bare durable receipt is accepted directly.
+    value = parsed
+    envelope = any(field in parsed for field in ("cli_envelope_version", "ok", "data"))
+    if envelope:
+        unknown_envelope = sorted(set(parsed) - {"cli_envelope_version", "ok", "data"})
+        missing_envelope = sorted({"cli_envelope_version", "ok", "data"} - set(parsed))
+        if unknown_envelope:
+            errors.append(
+                "QUINTE host envelope has unknown fields: "
+                + ", ".join(unknown_envelope)
+            )
+        if missing_envelope:
+            errors.append(
+                "QUINTE host envelope is missing fields: "
+                + ", ".join(missing_envelope)
+            )
+        if parsed.get("cli_envelope_version") != CONTRACTS.QUINTE_CLI_ENVELOPE_VERSION:
+            errors.append("QUINTE host envelope version is unsupported")
+        if parsed.get("ok") is not True or not isinstance(parsed.get("data"), dict):
+            errors.append("QUINTE host envelope is not a successful data envelope")
+        value = parsed.get("data") if isinstance(parsed.get("data"), dict) else {}
+    if errors:
+        return None, errors
+
+    unknown = sorted(set(value) - HOST_RECEIPT_FIELDS)
+    missing = sorted({"host_receipt_version", "invocation_id", "receipt_path", "operation", "observed_at", "state_root", "state"} - set(value))
+    if unknown:
+        errors.append(f"QUINTE host receipt has unknown fields: {', '.join(unknown)}")
+    if missing:
+        errors.append(f"QUINTE host receipt is missing fields: {', '.join(missing)}")
+    if value.get("host_receipt_version") != CONTRACTS.QUINTE_HOST_RECEIPT_VERSION:
+        errors.append("QUINTE host receipt version is unsupported")
+    if value.get("operation") not in CONTRACTS.QUINTE_HOST_RECEIPT_OPERATIONS:
+        errors.append("QUINTE host receipt operation must be inspect or reconcile")
+    if CONTRACTS.parse_utc_timestamp(value.get("observed_at")) is None:
+        errors.append("QUINTE host receipt observed_at must be an RFC 3339 UTC timestamp")
+    invocation_id = value.get("invocation_id")
+    if not nonempty(invocation_id):
+        errors.append("QUINTE host receipt invocation_id must be a non-empty string")
+    elif not is_canonical_uuid_v7(invocation_id):
+        errors.append("QUINTE host receipt invocation_id must be a canonical UUIDv7")
+
+    run_id = value.get("run_id")
+    if run_id is not None:
+        if not is_canonical_uuid_v7(run_id):
+            errors.append("QUINTE host receipt run_id must be a canonical UUIDv7 when present")
+
+    state_root_value = value.get("state_root")
+    state_root: Path | None = None
+    if not nonempty(state_root_value):
+        errors.append("QUINTE host receipt state_root must be a non-empty string")
+    else:
+        state_root_candidate = Path(state_root_value).expanduser()
+        if not state_root_candidate.is_absolute():
+            errors.append("QUINTE host receipt state_root must be absolute")
+        else:
+            state_root = state_root_candidate.resolve()
+            trusted_state_root = trusted_runs_root().parent.resolve()
+            if state_root != trusted_state_root:
+                errors.append(
+                    "QUINTE host receipt state_root does not match the trusted QUINTE state root"
+                )
+
+    receipt_path_value = value.get("receipt_path")
+    if not nonempty(receipt_path_value):
+        errors.append("QUINTE host receipt receipt_path must be a non-empty string")
+    else:
+        durable_input = Path(receipt_path_value).expanduser()
+        if durable_input.is_symlink():
+            errors.append("QUINTE host receipt receipt_path must not be a symlink")
+        durable = durable_input
+        if not durable.is_absolute():
+            errors.append("QUINTE host receipt receipt_path must be absolute")
+        else:
+            durable = durable.resolve()
+            # A bare receipt must be the durable authority itself.  A saved
+            # CLI envelope may live elsewhere, but its embedded receipt_path
+            # must point at the authority that is re-read below.
+            if not envelope and durable != supplied:
+                errors.append("QUINTE host receipt receipt_path does not identify the supplied receipt")
+            expected_durable = (
+                state_root / "host" / "receipts" / f"{invocation_id}.json"
+                if state_root is not None and nonempty(invocation_id)
+                else None
+            )
+            if expected_durable is not None and durable != expected_durable:
+                errors.append("QUINTE host receipt receipt_path is not bound to state_root")
+            if nonempty(invocation_id) and durable.name != f"{invocation_id}.json":
+                errors.append("QUINTE host receipt receipt_path is not bound to invocation_id")
+            if durable.parent.name != "receipts" or durable.parent.parent.name != "host":
+                errors.append("QUINTE host receipt receipt_path is outside the durable host receipts directory")
+            if not durable.is_file():
+                errors.append("QUINTE host receipt durable receipt_path does not exist")
+            else:
+                try:
+                    durable_value = json.loads(durable.read_text(encoding="utf-8"))
+                except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    errors.append(f"QUINTE durable host receipt cannot be parsed: {exc}")
+                else:
+                    if durable_value != value:
+                        errors.append("QUINTE host envelope does not match its durable receipt")
+    state = value.get("state")
+    if not isinstance(state, dict):
+        errors.append("QUINTE host receipt state must be an object")
+    else:
+        unknown_state = sorted(set(state) - HOST_STATE_FIELDS)
+        missing_state = sorted({"code", "active_run_ids"} - set(state))
+        if unknown_state:
+            errors.append(f"QUINTE host receipt state has unknown fields: {', '.join(unknown_state)}")
+        if missing_state:
+            errors.append(f"QUINTE host receipt state is missing fields: {', '.join(missing_state)}")
+        if state.get("code") not in HOST_STATE_CODES:
+            errors.append("QUINTE host receipt state.code is invalid")
+        if not isinstance(state.get("active_run_ids"), list) or not all(
+            isinstance(item, str) for item in state.get("active_run_ids", [])
+        ):
+            errors.append("QUINTE host receipt state.active_run_ids must be an array of strings")
+        else:
+            for active_run_id in state["active_run_ids"]:
+                if not is_canonical_uuid_v7(active_run_id):
+                    errors.append("QUINTE host receipt state.active_run_ids must contain canonical UUIDv7 values")
+                    break
+            if len(state["active_run_ids"]) != len(set(state["active_run_ids"])):
+                errors.append("QUINTE host receipt state.active_run_ids must be unique")
+
+    manifest = value.get("manifest")
+    result_binding = value.get("result")
+    recovery = value.get("recovery")
+    if value.get("operation") == "reconcile":
+        if not isinstance(recovery, dict):
+            errors.append("QUINTE host reconcile receipt recovery must be an object")
+        else:
+            unknown_recovery = sorted(set(recovery) - HOST_RECOVERY_FIELDS)
+            missing_recovery = sorted(HOST_RECOVERY_FIELDS - set(recovery))
+            if unknown_recovery:
+                errors.append(
+                    f"QUINTE host receipt recovery has unknown fields: {', '.join(unknown_recovery)}"
+                )
+            if missing_recovery:
+                errors.append(
+                    f"QUINTE host receipt recovery is missing fields: {', '.join(missing_recovery)}"
+                )
+            if recovery.get("outcome") not in {
+                "reconciled",
+                "no_active_run",
+                "ambiguous_active_runs",
+            }:
+                errors.append("QUINTE host receipt recovery.outcome is invalid")
+            if not isinstance(recovery.get("launch_safe"), bool):
+                errors.append("QUINTE host receipt recovery.launch_safe must be boolean")
+            recovery_path = recovery.get("receipt_path")
+            if not nonempty(recovery_path):
+                errors.append("QUINTE host receipt recovery.receipt_path must be non-empty")
+            elif nonempty(receipt_path_value) and Path(recovery_path).expanduser().resolve() != Path(receipt_path_value).expanduser().resolve():
+                errors.append("QUINTE host receipt recovery.receipt_path is not bound to receipt_path")
+            if recovery.get("outcome") != "reconciled":
+                errors.append("QUINTE host reconcile receipt must bind a reconciled run")
+            if not isinstance(state, dict) or state.get("code") != "reconciled":
+                errors.append("QUINTE host reconcile receipt state.code must be reconciled")
+            if isinstance(state, dict) and isinstance(recovery.get("launch_safe"), bool):
+                expected_launch_safe = not state.get("active_run_ids")
+                if recovery["launch_safe"] != expected_launch_safe:
+                    errors.append(
+                        "QUINTE host reconcile receipt recovery.launch_safe does not match active_run_ids"
+                    )
+    elif recovery is not None:
+        errors.append("QUINTE host inspect receipt must not contain recovery")
+    if value.get("operation") == "inspect" and isinstance(state, dict) and state.get("code") != "terminal":
+        errors.append("QUINTE host inspect receipt state.code must be terminal")
+    if value.get("operation") in {"inspect", "reconcile"} and not nonempty(run_id):
+        errors.append("QUINTE host receipt run_id is required for inspect/reconcile")
+    if not isinstance(manifest, dict):
+        errors.append("QUINTE host receipt manifest must be an object")
+    else:
+        unknown_manifest = sorted(set(manifest) - HOST_MANIFEST_FIELDS)
+        missing_manifest = sorted(HOST_REQUIRED_MANIFEST_FIELDS - set(manifest))
+        if unknown_manifest:
+            errors.append(f"QUINTE host receipt manifest has unknown fields: {', '.join(unknown_manifest)}")
+        if missing_manifest:
+            errors.append(f"QUINTE host receipt manifest is missing fields: {', '.join(missing_manifest)}")
+        if not nonempty(manifest.get("manifest_version")):
+            errors.append("QUINTE host receipt manifest manifest_version must be non-empty")
+        for field in ("brief_sha256", "policy_sha256", "snapshot_sha256", "runtime_sha256"):
+            if not CONTRACTS.is_digest(manifest.get(field)):
+                errors.append(f"QUINTE host receipt manifest {field} is invalid")
+        if not CONTRACTS.is_digest(manifest.get("result_sha256")):
+            errors.append("QUINTE host receipt manifest result_sha256 is invalid")
+        if manifest.get("status") not in {"completed", "degraded"}:
+            errors.append("QUINTE host receipt manifest must be completed or degraded")
+    if not isinstance(result_binding, dict):
+        errors.append("QUINTE host receipt result must be an object")
+    else:
+        unknown_result = sorted(set(result_binding) - HOST_RESULT_FIELDS)
+        if unknown_result:
+            errors.append(f"QUINTE host receipt result has unknown fields: {', '.join(unknown_result)}")
+        if result_binding.get("verified") is not True:
+            errors.append("QUINTE host receipt result.verified must be true")
+        if result_binding.get("actionable") is not True:
+            errors.append("QUINTE host receipt result.actionable must be true for authorization")
+        if result_binding.get("contract_version") != CONTRACTS.QUINTE_RESULT_VERSION:
+            errors.append(
+                "QUINTE host receipt result.contract_version does not match the active result contract"
+            )
+        if not CONTRACTS.is_digest(result_binding.get("sha256")):
+            errors.append("QUINTE host receipt result.sha256 is invalid")
+        if not nonempty(result_binding.get("path")):
+            errors.append("QUINTE host receipt result.path must be non-empty")
+        elif not Path(result_binding["path"]).expanduser().is_absolute():
+            errors.append("QUINTE host receipt result.path must be absolute")
+    if isinstance(manifest, dict) and isinstance(result_binding, dict):
+        if manifest.get("result_sha256") != result_binding.get("sha256"):
+            errors.append("QUINTE host receipt manifest/result digests differ")
+    if isinstance(state, dict) and nonempty(run_id):
+        active = state.get("active_run_ids", [])
+        manifest_status = manifest.get("status") if isinstance(manifest, dict) else None
+        if manifest_status in {"completed", "degraded"} and run_id in active:
+            errors.append("terminal QUINTE host receipt still lists its run as active")
+
+    if errors:
+        return None, errors
+
+    # Verify the receipt's result binding points to a canonical run artifact;
+    # summarize() performs the full active QUINTE contract validation.
+    result_input = Path(result_binding["path"]).expanduser()
+    if result_input.is_symlink():
+        errors.append("QUINTE host receipt result.path must not be a symlink")
+    result_path = result_input.resolve()
+    runs_root = trusted_runs_root()
+    run_dir = result_path.parent
+    if result_path.name != "result.json" or run_dir.parent != runs_root:
+        errors.append("QUINTE host receipt result.path is outside the canonical runs root")
+    if run_dir.name != run_id:
+        errors.append("QUINTE host receipt result.path is not bound to run_id")
+    if not _path_is_within(runs_root, result_path):
+        errors.append("QUINTE host receipt result.path escapes the trusted runs root")
+    if errors:
+        return None, errors
+    summary, product_errors = summarize(
+        str(result_path), request, None, verify_cli=False
+    )
+    errors.extend(product_errors)
+    if summary is None:
+        return None, errors
+    if summary["run_id"] != run_id:
+        errors.append("QUINTE host receipt run_id does not match the verified result")
+    if summary["result_sha256"] != result_binding["sha256"]:
+        errors.append("QUINTE host receipt result digest does not match result.json")
+    if summary["status"] != manifest["status"]:
+        errors.append("QUINTE host receipt result status does not match manifest")
+    if result_binding.get("contract_version") != summary["result_version"]:
+        errors.append("QUINTE host receipt result contract version does not match result.json")
+    try:
+        canonical_manifest = load_json_object(run_dir / "manifest.json")
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(f"QUINTE canonical manifest cannot be re-read: {exc}")
+    else:
+        for field, projection in manifest.items():
+            if canonical_manifest.get(field) != projection:
+                errors.append(f"QUINTE host receipt manifest {field} does not match manifest.json")
+    if errors:
+        return None, errors
+    return {
+        **summary,
+        "host_receipt_ref": str(supplied),
+        "host_receipt_sha256": CONTRACTS.sha256_bytes(supplied_raw),
+        "host_receipt_operation": value["operation"],
+    }, []
 
 
 def resolve_magi_artifact(trial: Path, ref: Any, label: str, errors: list[str]) -> Path | None:
@@ -1114,6 +1493,8 @@ def summarize(
     ref: str,
     request: dict[str, Any],
     base_dir: Path | None = None,
+    *,
+    verify_cli: bool = True,
 ) -> tuple[dict[str, Any] | None, list[str]]:
     errors: list[str] = []
     path = resolve_ref(ref, base_dir)
@@ -1186,47 +1567,48 @@ def summarize(
         if brief.get(field) != expected or result.get(field) != expected:
             errors.append(f"quinte brief/result {field} does not match the route request")
 
-    quinte_binary = active_quinte_binary()
-    if quinte_binary is None:
-        errors.append("trusted quinte executable is not available on PATH")
-    else:
-        try:
-            binary_sha256 = CONTRACTS.sha256_bytes(quinte_binary.read_bytes())
-        except OSError as exc:
-            errors.append(f"trusted quinte executable cannot be read: {exc}")
+    if verify_cli:
+        quinte_binary = active_quinte_binary()
+        if quinte_binary is None:
+            errors.append("trusted quinte executable is not available on PATH")
         else:
-            if manifest.get("runtime_sha256") != binary_sha256:
-                errors.append("quinte manifest runtime digest does not match the active executable")
-        try:
-            completed = subprocess.run(
-                [str(quinte_binary), "inspect", str(result.get("run_id", "")), "--json"],
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=15,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            errors.append(f"quinte CLI state inspection failed: {exc}")
-        else:
-            if completed.returncode != 0:
-                errors.append("quinte CLI does not report the run as a completed valid product")
+            try:
+                binary_sha256 = CONTRACTS.sha256_bytes(quinte_binary.read_bytes())
+            except OSError as exc:
+                errors.append(f"trusted quinte executable cannot be read: {exc}")
             else:
-                try:
-                    inspected = json.loads(completed.stdout)
-                except json.JSONDecodeError:
-                    errors.append("quinte CLI state inspection did not return JSON")
+                if manifest.get("runtime_sha256") != binary_sha256:
+                    errors.append("quinte manifest runtime digest does not match the active executable")
+            try:
+                completed = subprocess.run(
+                    [str(quinte_binary), "inspect", str(result.get("run_id", "")), "--json"],
+                    capture_output=True,
+                    check=False,
+                    text=True,
+                    timeout=15,
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                errors.append(f"quinte CLI state inspection failed: {exc}")
+            else:
+                if completed.returncode != 0:
+                    errors.append("quinte CLI does not report the run as a completed valid product")
                 else:
-                    data = (
-                        inspected.get("data")
-                        if isinstance(inspected, dict)
-                        and inspected.get("cli_envelope_version") == CONTRACTS.QUINTE_CLI_ENVELOPE_VERSION
-                        and inspected.get("ok") is True
-                        else None
-                    )
-                    inspected_manifest = data.get("manifest") if isinstance(data, dict) else None
-                    inspected_result = data.get("result") if isinstance(data, dict) else None
-                    if inspected_manifest != manifest or inspected_result != result:
-                        errors.append("quinte CLI state differs from the bound manifest or result")
+                    try:
+                        inspected = json.loads(completed.stdout)
+                    except json.JSONDecodeError:
+                        errors.append("quinte CLI state inspection did not return JSON")
+                    else:
+                        data = (
+                            inspected.get("data")
+                            if isinstance(inspected, dict)
+                            and inspected.get("cli_envelope_version") == CONTRACTS.QUINTE_CLI_ENVELOPE_VERSION
+                            and inspected.get("ok") is True
+                            else None
+                        )
+                        inspected_manifest = data.get("manifest") if isinstance(data, dict) else None
+                        inspected_result = data.get("result") if isinstance(data, dict) else None
+                        if inspected_manifest != manifest or inspected_result != result:
+                            errors.append("quinte CLI state differs from the bound manifest or result")
 
     outcome = {
         "result_ref": str(path),
@@ -1756,20 +2138,25 @@ def build_product_evidence(
     magi_refs: list[str] | None = None,
     *,
     base_dir: Path | None = None,
+    quinte_receipt_refs: list[str] | None = None,
 ) -> dict[str, Any]:
     route = route_decision.get("route")
     qrefs = list(quinte_refs or [])
+    qreceipt_refs = list(quinte_receipt_refs or [])
     mrefs = list(magi_refs or [])
     required = route in {"QUINTE", "MAGI"}
     expected = route if required else None
     errors: list[str] = []
-    if len(qrefs) + len(mrefs) > 1:
+    if qrefs and qreceipt_refs:
+        errors.append("QUINTE result and host receipt cannot both be bound")
+    if len(qrefs) + len(qreceipt_refs) + len(mrefs) > 1:
         errors.append("product binding accepts exactly one atomic product")
-    if route == "QUINTE" and (len(qrefs) != 1 or mrefs):
-        errors.append("active QUINTE route requires exactly one QUINTE product")
-    elif route == "MAGI" and (len(mrefs) != 1 or qrefs):
+    quinte_sources = len(qrefs) + len(qreceipt_refs)
+    if route == "QUINTE" and (quinte_sources != 1 or mrefs):
+        errors.append("active QUINTE route requires exactly one QUINTE product or host receipt")
+    elif route == "MAGI" and (len(mrefs) != 1 or qrefs or qreceipt_refs):
         errors.append("active MAGI route requires exactly one MAGI product")
-    elif not required and (qrefs or mrefs):
+    elif not required and (qrefs or qreceipt_refs or mrefs):
         errors.append("a product was supplied for a route that does not accept one")
     outcome = None
     if len(qrefs) == 1:
@@ -1788,6 +2175,28 @@ def build_product_evidence(
                 "action_scope": summary["action_scope"],
                 "affected_paths": summary["affected_paths"],
                 "action_binding_sha256": summary["action_binding_sha256"],
+            }
+    elif len(qreceipt_refs) == 1:
+        summary, product_errors = load_quinte_host_receipt(
+            qreceipt_refs[0], request, base_dir=base_dir
+        )
+        errors.extend(product_errors)
+        if summary is not None:
+            outcome = {
+                "product_ref": summary["result_ref"],
+                "product_kind": "QUINTE",
+                "product_version": summary["result_version"],
+                "product_sha256": summary["result_sha256"],
+                "product_id": summary["run_id"],
+                "status": summary["status"],
+                "decision": "PASS" if summary["status"] == "completed" else "BLOCK",
+                "question": summary["question"],
+                "action_scope": summary["action_scope"],
+                "affected_paths": summary["affected_paths"],
+                "action_binding_sha256": summary["action_binding_sha256"],
+                "host_receipt_ref": summary["host_receipt_ref"],
+                "host_receipt_sha256": summary["host_receipt_sha256"],
+                "host_receipt_operation": summary["host_receipt_operation"],
             }
     elif len(mrefs) == 1:
         outcome, product_errors = summarize_magi(mrefs[0], request, base_dir)
