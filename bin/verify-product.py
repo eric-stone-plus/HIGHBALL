@@ -485,17 +485,17 @@ def is_canonical_uuid_v7(value: Any) -> bool:
 
 def active_quinte_binary() -> Path | None:
     configured = os.environ.get("HIGHBALL_QUINTE_BIN")
-    candidates = [Path(configured).expanduser()] if configured else []
-    resolved = shutil.which("quinte")
-    if resolved:
-        candidates.append(Path(resolved))
-    candidates.append(Path.home() / ".local" / "bin" / "quinte")
-    if os.name == "nt":
-        candidates.insert(0, Path.home() / "AppData" / "Local" / "Programs" / "quinte" / "bin" / "quinte.exe")
-    for candidate in candidates:
-        if candidate.is_file() and os.access(candidate, os.X_OK):
-            return candidate.resolve()
-    return None
+    if not configured:
+        return None
+    configured_path = Path(configured)
+    if not configured_path.is_absolute():
+        raise ValueError("HIGHBALL_QUINTE_BIN must be an absolute path")
+    candidate = configured_path
+    if not candidate.is_file() or not os.access(candidate, os.X_OK):
+        raise ValueError(
+            "HIGHBALL_QUINTE_BIN must name an executable regular file"
+        )
+    return candidate.resolve()
 
 
 def nonempty(value: Any) -> bool:
@@ -1568,47 +1568,75 @@ def summarize(
             errors.append(f"quinte brief/result {field} does not match the route request")
 
     if verify_cli:
-        quinte_binary = active_quinte_binary()
-        if quinte_binary is None:
-            errors.append("trusted quinte executable is not available on PATH")
-        else:
+        try:
+            state_root_value = os.environ.get("QUINTE_HOME")
+            if not state_root_value:
+                raise ValueError(
+                    "QUINTE_HOME must explicitly pin an absolute QUINTE state root"
+                )
+            if not Path(state_root_value).is_absolute():
+                raise ValueError("QUINTE_HOME must be an absolute path")
+            if not os.environ.get("HIGHBALL_QUINTE_BIN"):
+                raise ValueError(
+                    "HIGHBALL_QUINTE_BIN must explicitly pin an absolute QUINTE executable"
+                )
+            binary_value = os.environ["HIGHBALL_QUINTE_BIN"]
+            if not Path(binary_value).is_absolute():
+                raise ValueError("HIGHBALL_QUINTE_BIN must be an absolute path")
+            quinte_binary = active_quinte_binary()
+            runs_root_for_cli = trusted_runs_root()
+            if quinte_binary is None:
+                raise ValueError("HIGHBALL_QUINTE_BIN does not name an executable regular file")
+        except ValueError as exc:
+            errors.append(str(exc))
+            quinte_binary = None
+            runs_root_for_cli = None
+        if quinte_binary is not None and runs_root_for_cli is not None:
+            runtime_matches = False
             try:
                 binary_sha256 = CONTRACTS.sha256_bytes(quinte_binary.read_bytes())
             except OSError as exc:
                 errors.append(f"trusted quinte executable cannot be read: {exc}")
             else:
                 if manifest.get("runtime_sha256") != binary_sha256:
-                    errors.append("quinte manifest runtime digest does not match the active executable")
-            try:
-                completed = subprocess.run(
-                    [str(quinte_binary), "inspect", str(result.get("run_id", "")), "--json"],
-                    capture_output=True,
-                    check=False,
-                    text=True,
-                    timeout=15,
-                )
-            except (OSError, subprocess.TimeoutExpired) as exc:
-                errors.append(f"quinte CLI state inspection failed: {exc}")
-            else:
-                if completed.returncode != 0:
-                    errors.append("quinte CLI does not report the run as a completed valid product")
+                    errors.append("quinte manifest runtime digest does not match the pinned executable")
                 else:
-                    try:
-                        inspected = json.loads(completed.stdout)
-                    except json.JSONDecodeError:
-                        errors.append("quinte CLI state inspection did not return JSON")
+                    runtime_matches = True
+            # Never execute a binary after its digest has drifted from the
+            # runtime bound into the run manifest.  The direct result path is
+            # legacy compatibility; receipt verification is subprocess-free.
+            if runtime_matches:
+                try:
+                    completed = subprocess.run(
+                        [str(quinte_binary), "inspect", str(result.get("run_id", "")), "--json"],
+                        capture_output=True,
+                        check=False,
+                        text=True,
+                        timeout=15,
+                        env={**os.environ, "QUINTE_HOME": str(runs_root_for_cli.parent)},
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    errors.append(f"quinte CLI state inspection failed: {exc}")
+                else:
+                    if completed.returncode != 0:
+                        errors.append("quinte CLI does not report the run as a completed valid product")
                     else:
-                        data = (
-                            inspected.get("data")
-                            if isinstance(inspected, dict)
-                            and inspected.get("cli_envelope_version") == CONTRACTS.QUINTE_CLI_ENVELOPE_VERSION
-                            and inspected.get("ok") is True
-                            else None
-                        )
-                        inspected_manifest = data.get("manifest") if isinstance(data, dict) else None
-                        inspected_result = data.get("result") if isinstance(data, dict) else None
-                        if inspected_manifest != manifest or inspected_result != result:
-                            errors.append("quinte CLI state differs from the bound manifest or result")
+                        try:
+                            inspected = json.loads(completed.stdout)
+                        except json.JSONDecodeError:
+                            errors.append("quinte CLI state inspection did not return JSON")
+                        else:
+                            data = (
+                                inspected.get("data")
+                                if isinstance(inspected, dict)
+                                and inspected.get("cli_envelope_version") == CONTRACTS.QUINTE_CLI_ENVELOPE_VERSION
+                                and inspected.get("ok") is True
+                                else None
+                            )
+                            inspected_manifest = data.get("manifest") if isinstance(data, dict) else None
+                            inspected_result = data.get("result") if isinstance(data, dict) else None
+                            if inspected_manifest != manifest or inspected_result != result:
+                                errors.append("quinte CLI state differs from the bound manifest or result")
 
     outcome = {
         "result_ref": str(path),

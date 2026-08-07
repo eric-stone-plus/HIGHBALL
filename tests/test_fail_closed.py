@@ -75,7 +75,8 @@ class ContractSchemaTests(unittest.TestCase):
     def test_runtime_resolution_honors_explicit_state_and_binary_paths(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            binary = root / "quinte"
+            binary = root / "bin" / "quinte"
+            binary.parent.mkdir()
             binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             binary.chmod(0o755)
             with mock.patch.dict(
@@ -88,6 +89,83 @@ class ContractSchemaTests(unittest.TestCase):
             ):
                 self.assertEqual(PRODUCT.trusted_runs_root(), (root / "state" / "runs").resolve())
                 self.assertEqual(PRODUCT.active_quinte_binary(), binary.resolve())
+
+    def test_direct_quinte_verification_requires_explicit_pins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            binary = root / "bin" / "quinte"
+            binary.parent.mkdir()
+            binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            binary.chmod(0o755)
+            with mock.patch.dict(os.environ, {}, clear=True):
+                self.assertIsNone(PRODUCT.active_quinte_binary())
+                result_path = product(root / "state", request(), binary)
+                summary, errors = PRODUCT.summarize(
+                    str(result_path), request(), verify_cli=True
+                )
+                self.assertTrue(any("QUINTE_HOME" in error for error in errors))
+
+    def test_direct_quinte_verification_rejects_runtime_digest_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            state = root / "state"
+            binary = root / "bin" / "quinte"
+            binary.parent.mkdir()
+            binary.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            binary.chmod(0o755)
+            result_path = product(state, request(), binary)
+            binary.write_text("#!/bin/sh\n# replaced\nexit 0\n", encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {"QUINTE_HOME": str(state), "HIGHBALL_QUINTE_BIN": str(binary)},
+                clear=True,
+            ):
+                with mock.patch.object(
+                    PRODUCT.subprocess,
+                    "run",
+                    side_effect=AssertionError("digest-drifted binary must not execute"),
+                ):
+                    summary, errors = PRODUCT.summarize(
+                        str(result_path), request(), verify_cli=True
+                    )
+            self.assertTrue(any("runtime digest" in error for error in errors), errors)
+
+    def test_direct_quinte_verification_rejects_relative_binary_pin(self) -> None:
+        with mock.patch.dict(
+            os.environ,
+            {"QUINTE_HOME": "/absolute/state", "HIGHBALL_QUINTE_BIN": "quinte"},
+            clear=False,
+        ):
+            with self.assertRaises(ValueError):
+                PRODUCT.active_quinte_binary()
+
+    def test_direct_quinte_verification_accepts_matching_explicit_pins(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            state = root / "state"
+            binary = root / "bin" / "quinte"
+            binary.parent.mkdir()
+            binary.write_text(
+                "#!/usr/bin/env python3\n"
+                "import json, os, pathlib, sys\n"
+                "run = pathlib.Path(os.environ['QUINTE_HOME']) / 'runs' / sys.argv[2]\n"
+                "print(json.dumps({'cli_envelope_version': '1.0', 'ok': True, "
+                "'data': {'manifest': json.loads((run/'manifest.json').read_text()), "
+                "'result': json.loads((run/'result.json').read_text())}}))\n",
+                encoding="utf-8",
+            )
+            binary.chmod(0o755)
+            result_path = product(state, request(), binary)
+            with mock.patch.dict(
+                os.environ,
+                {"QUINTE_HOME": str(state), "HIGHBALL_QUINTE_BIN": str(binary)},
+                clear=True,
+            ):
+                summary, errors = PRODUCT.summarize(
+                    str(result_path), request(), verify_cli=True
+                )
+            self.assertIsNotNone(summary)
+            self.assertEqual(errors, [])
 
     def test_route_execution_schema_matches_active_version(self) -> None:
         schema = json.loads((ROOT / "schemas" / "route-execution-report.schema.json").read_text())

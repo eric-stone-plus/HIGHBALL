@@ -24,9 +24,12 @@ Cross-task, moved, tampered, stale, or scope-drifted products block.
 
 `--quinte-result` binds one canonical `result.json`. HIGHBALL validates the
 active QUINTE contract, completed status, manifest/result/brief digests, run
-identity, installed runtime digest, `quinte inspect`, five R1/R2 lane artifact
-pairs, and all seven same-family route bindings. HIGHBALL does not schedule a
-lane.
+identity, pinned installed runtime digest, legacy `quinte inspect` cross-check,
+five R1/R2 lane artifact pairs, and all seven same-family route bindings.
+This direct verifier path requires explicit absolute `QUINTE_HOME` and
+`HIGHBALL_QUINTE_BIN`; it never falls back to PATH. A runtime digest change is
+an integrity boundary, so an older run must be inspected/reconciled before a
+new run is created.
 
 `--quinte-receipt` is the host-integrated binding. It accepts one durable
 `host/receipts/<invocation-id>.json` file or a saved successful
@@ -39,6 +42,10 @@ product authorization. HIGHBALL validates the bound product locally with no
 QUINTE subprocess, retry, resume, polling loop, or scheduling side effect.
 Receipt provenance is retained in `product_evidence.product` as
 `host_receipt_ref`, `host_receipt_sha256`, and `host_receipt_operation`.
+
+The receipt path is the preferred external-automation integration: it uses the
+receipt's bound state root, run identity, and runtime digest and performs no
+QUINTE subprocess. This distinction keeps HIGHBALL from becoming a scheduler.
 
 ## MAGI Binding
 

@@ -81,6 +81,25 @@ performs product validation locally. It accepts only verified `inspect` or
 `reconcile` observations; it never invokes `quinte`, starts a run, resumes a
 worker, polls status, or schedules recovery. `--quinte-result` remains
 available for callers that deliberately use the legacy direct result binding.
+That direct path is a local verifier operation (it does not schedule QUINTE),
+but its optional CLI cross-check is now fail-closed: callers must set
+`QUINTE_HOME` and `HIGHBALL_QUINTE_BIN` to absolute, stable paths. A configured
+binary is never silently replaced by PATH lookup, and its SHA-256 must match
+`manifest.runtime_sha256`. After a binary replacement, inspect/reconcile the
+old run and create a new run; do not resume it through a changed executable.
+
+Production direct-binding example:
+
+```bash
+export QUINTE_HOME=/absolute/path/to/quinte-state
+export HIGHBALL_QUINTE_BIN=/absolute/path/to/quinte
+sha256sum "$HIGHBALL_QUINTE_BIN"
+python3 bin/build-action-packet.py request.json trace.json \
+  --quinte-result "$QUINTE_HOME/runs/RUN_ID/result.json"
+```
+
+For new automation, prefer `--quinte-receipt` so HIGHBALL remains an opaque,
+no-subprocess consumer of a separately captured `quinte host inspect` receipt.
 
 The packet is fail-closed: missing, stale, moved, replayed, cross-task,
 same-family-disguised MAGI, incomplete cross-review, non-PASS final judgment,
