@@ -1,0 +1,25 @@
+[package]
+name = "highball"
+version = "0.1.0"
+edition = "2021"
+description = "Deterministic HIGHBALL control plane: route, packet, product bind, authorize"
+license = "Apache-2.0"
+
+[[bin]]
+name = "highball"
+path = "src/main.rs"
+
+[[bin]]
+name = "build-action-packet"
+path = "src/bin/build_action_packet.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+clap = { version = "4", features = ["derive", "env"] }
+regex = "1"
+serde_json = "1"
+sha2 = "0.10"
+uuid = "1"
+
+[profile.release]
+lto = "thin"

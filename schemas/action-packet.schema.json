@@ -1,0 +1,993 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/action-packet.schema.json",
+  "title": "HIGHBALL Action Packet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "packet_version",
+    "route_request",
+    "route_decision",
+    "trace",
+    "validation",
+    "quality",
+    "product_evidence",
+    "authorization",
+    "action_decision",
+    "decision_reasons",
+    "required_next_steps"
+  ],
+  "properties": {
+    "packet_version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "route_request": {
+      "$ref": "#/$defs/routeRequest"
+    },
+    "route_decision": {
+      "$ref": "#/$defs/routeDecision"
+    },
+    "trace": {
+      "$ref": "#/$defs/residualTrace"
+    },
+    "validation": {
+      "$ref": "#/$defs/validation"
+    },
+    "quality": {
+      "$ref": "#/$defs/quality"
+    },
+    "product_evidence": {
+      "$ref": "#/$defs/productEvidence"
+    },
+    "action_decision": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "review",
+        "block"
+      ]
+    },
+    "decision_reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "required_next_steps": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "authorization": {
+      "$ref": "#/$defs/authorization"
+    }
+  },
+  "$defs": {
+    "routeRequest": {
+      "type": "object",
+      "required": [
+        "question",
+        "action_boundary",
+        "change_class",
+        "affected_paths",
+        "risk",
+        "action_scope"
+      ],
+      "properties": {
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_boundary": {
+          "type": "string",
+          "enum": [
+            "none",
+            "reversible",
+            "protected_write",
+            "irreversible"
+          ]
+        },
+        "change_class": {
+          "type": "string",
+          "enum": [
+            "claim",
+            "code",
+            "protocol",
+            "architecture",
+            "config",
+            "credential",
+            "deletion",
+            "deployment",
+            "financial",
+            "legal"
+          ]
+        },
+        "affected_paths": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "executable": {
+          "type": "boolean"
+        },
+        "risk": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL",
+            "P0"
+          ]
+        },
+        "trace_quality_gate": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "pass",
+            "review",
+            "block"
+          ]
+        },
+        "open_high_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action_scope": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2000
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action_boundary": {
+                "enum": ["protected_write", "irreversible"]
+              }
+            },
+            "required": ["action_boundary"]
+          },
+          "then": {
+            "properties": {
+              "affected_paths": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "routeDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route",
+        "reason",
+        "required_artifacts",
+        "residual_trace_required",
+        "authorization_required"
+      ],
+      "properties": {
+        "route": {
+          "type": "string",
+          "enum": [
+            "direct-evidence",
+            "QUINTE",
+            "human-review",
+            "block"
+          ]
+        },
+        "reason": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "residual_trace_required": {
+          "type": "boolean"
+        },
+        "authorization_required": {
+          "type": "boolean"
+        }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "errors",
+        "blocks"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "valid",
+            "blocked",
+            "invalid"
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "blocks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "question",
+        "instrument",
+        "action_boundary",
+        "highball_decision",
+        "residual_count",
+        "high_risk_count",
+        "action_blocking_count",
+        "open_high_risk_count",
+        "unsupported_high_risk_closure_count",
+        "silent_collapse_count",
+        "unresolved_count",
+        "decision_conflict_count",
+        "evidence_coverage",
+        "closure_evidence_coverage",
+        "action_blocking_closure_coverage",
+        "trial_manifest_present",
+        "base_model_relation",
+        "perspective_count",
+        "independent_first_pass_count",
+        "perturbation_axis_count",
+        "independence_control_count",
+        "contamination_risk_count",
+        "same_model_flag",
+        "cost_fields_present",
+        "quality_gate",
+        "warnings"
+      ],
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "instrument": {
+          "type": "string",
+          "enum": [
+            "QUINTE",
+            "direct-evidence",
+            "human"
+          ]
+        },
+        "action_boundary": {
+          "type": "string",
+          "enum": [
+            "none",
+            "reversible",
+            "protected_write",
+            "irreversible"
+          ]
+        },
+        "highball_decision": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "pass",
+            "review",
+            "block",
+            "escalate"
+          ]
+        },
+        "residual_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "high_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action_blocking_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_high_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsupported_high_risk_closure_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "silent_collapse_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unresolved_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "decision_conflict_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "evidence_coverage": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "closure_evidence_coverage": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "action_blocking_closure_coverage": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "trial_manifest_present": {
+          "type": "boolean"
+        },
+        "base_model_relation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "unknown",
+            "same_model",
+            "same_family",
+            "heterogeneous_models",
+            "mixed",
+            "human",
+            "direct_evidence",
+            null
+          ]
+        },
+        "perspective_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "independent_first_pass_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "perturbation_axis_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "independence_control_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "contamination_risk_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "same_model_flag": {
+          "type": "boolean"
+        },
+        "cost_fields_present": {
+          "type": "boolean"
+        },
+        "quality_gate": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "review",
+            "block"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "productEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "status",
+        "binding",
+        "product",
+        "errors"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "missing",
+            "complete",
+            "blocked",
+            "degraded",
+            "invalid"
+          ]
+        },
+        "binding": {
+          "type": "string",
+          "enum": [
+            "atomic_quinte_product",
+            "not_applicable"
+          ],
+          "description": "Atomic QUINTE product binding, or a route with no product."
+        },
+        "product": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/productOutcome"
+            }
+          ]
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "productOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "product_ref",
+        "product_kind",
+        "product_version",
+        "product_sha256",
+        "product_id",
+        "status",
+        "decision",
+        "question",
+        "action_scope",
+        "affected_paths",
+        "action_binding_sha256"
+      ],
+      "properties": {
+        "product_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "product_kind": {
+          "type": "string",
+          "enum": ["QUINTE"]
+        },
+        "product_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "product_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "product_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "const": "completed"
+        },
+        "decision": {
+          "type": "string",
+          "enum": ["PASS", "BLOCK", "ESCALATE"]
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "affected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "action_binding_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "host_receipt_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "host_receipt_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "host_receipt_operation": {
+          "type": "string",
+          "enum": ["inspect", "reconcile"]
+        }
+      },
+      "dependentRequired": {
+        "host_receipt_ref": [
+          "host_receipt_sha256",
+          "host_receipt_operation"
+        ],
+        "host_receipt_sha256": [
+          "host_receipt_ref",
+          "host_receipt_operation"
+        ],
+        "host_receipt_operation": [
+          "host_receipt_ref",
+          "host_receipt_sha256"
+        ]
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "product_kind": {"const": "QUINTE"}
+            },
+            "required": ["product_kind"]
+          },
+          "then": {
+            "properties": {
+              "decision": {"const": "PASS"}
+            }
+          }
+        }
+      ]
+    },
+    "residualTrace": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_version",
+        "question",
+        "instrument",
+        "residuals",
+        "action_boundary",
+        "highball_decision",
+        "action_binding_sha256"
+      ],
+      "properties": {
+        "trace_version": {
+          "const": "1.1"
+        },
+        "question": {
+          "type": "string",
+          "minLength": 1
+        },
+        "instrument": {
+          "type": "string",
+          "enum": [
+            "QUINTE",
+            "direct-evidence",
+            "human"
+          ]
+        },
+        "residuals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/residual"
+          }
+        },
+        "action_boundary": {
+          "type": "string",
+          "enum": [
+            "none",
+            "reversible",
+            "protected_write",
+            "irreversible"
+          ]
+        },
+        "highball_decision": {
+          "type": "string",
+          "enum": [
+            "not_applicable",
+            "pass",
+            "review",
+            "block",
+            "escalate"
+          ]
+        },
+        "trial_manifest": {
+          "$ref": "#/$defs/trialManifest"
+        },
+        "action_binding_sha256": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        }
+      }
+    },
+    "trialManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "manifest_version",
+        "base_model_relation",
+        "perspective_count",
+        "perspectives",
+        "perturbation_axes",
+        "independence_controls",
+        "contamination_risks",
+        "cost"
+      ],
+      "properties": {
+        "manifest_version": {
+          "type": "string"
+        },
+        "base_model_relation": {
+          "type": "string",
+          "enum": [
+            "unknown",
+            "same_model",
+            "same_family",
+            "heterogeneous_models",
+            "mixed",
+            "human",
+            "direct_evidence"
+          ]
+        },
+        "perspective_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "perspectives": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/perspective"
+          }
+        },
+        "perturbation_axes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "independence_controls": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "contamination_risks": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "cost": {
+          "$ref": "#/$defs/trialCost"
+        }
+      }
+    },
+    "perspective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "role",
+        "route",
+        "artifact",
+        "prompt_hash",
+        "independent_first_pass"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_hash": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "independent_first_pass": {
+          "type": "boolean"
+        }
+      }
+    },
+    "trialCost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "total_tokens",
+        "wall_time_seconds",
+        "tool_calls",
+        "human_minutes"
+      ],
+      "properties": {
+        "total_tokens": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "wall_time_seconds": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "tool_calls": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "human_minutes": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "residual": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "severity",
+        "type",
+        "source",
+        "finding",
+        "affected_paths",
+        "error_signature",
+        "evidence",
+        "disposition",
+        "required_closure",
+        "closure_state",
+        "closure_evidence",
+        "scope"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL",
+            "P0"
+          ]
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "contradiction",
+            "omission",
+            "evidence_gap",
+            "confidence_mismatch",
+            "drift",
+            "execution_mismatch",
+            "silent_collapse"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "finding": {
+          "type": "string",
+          "minLength": 1
+        },
+        "affected_paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "error_signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "evidence": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "disposition": {
+          "type": "string",
+          "enum": [
+            "verified",
+            "falsified",
+            "unresolved",
+            "escalated",
+            "discarded"
+          ]
+        },
+        "required_closure": {
+          "type": "string",
+          "enum": [
+            "none",
+            "edit",
+            "test",
+            "command",
+            "block",
+            "waiver",
+            "human_review"
+          ]
+        },
+        "closure_state": {
+          "type": "string",
+          "enum": [
+            "open",
+            "closed",
+            "blocked",
+            "waived",
+            "not_applicable"
+          ]
+        },
+        "closure_evidence": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "scope": {
+          "type": "string"
+        }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required",
+        "status",
+        "artifact_ref",
+        "artifact_sha256",
+        "authorization_id",
+        "action_binding_sha256",
+        "action_scope",
+        "issued_at",
+        "expires_at",
+        "errors"
+      ],
+      "properties": {
+        "required": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": [
+            "not_required",
+            "missing",
+            "authorized",
+            "invalid"
+          ]
+        },
+        "artifact_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "artifact_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "authorization_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "action_binding_sha256": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "action_scope": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "issued_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "expires_at": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

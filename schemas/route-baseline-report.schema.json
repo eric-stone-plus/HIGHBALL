@@ -1,0 +1,346 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/route-baseline-report.schema.json",
+  "title": "HIGHBALL Route Baseline Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "baseline_report_version",
+    "inputs",
+    "action_boundary",
+    "comparisons",
+    "summary",
+    "non_authorization"
+  ],
+  "properties": {
+    "baseline_report_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "calibration_report_ref",
+        "outcome_ledger_ref"
+      ],
+      "properties": {
+        "calibration_report_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome_ledger_ref": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "action_boundary": {
+      "type": "string",
+      "minLength": 1
+    },
+    "comparisons": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/comparison"
+      }
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "non_authorization": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "comparison": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target_route_group",
+        "baseline_route_group",
+        "comparison_basis",
+        "target",
+        "baseline",
+        "deltas",
+        "outcomes",
+        "verdict",
+        "reasons"
+      ],
+      "properties": {
+        "target_route_group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "baseline_route_group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "comparison_basis": {
+          "type": "string",
+          "const": "same_action_boundary"
+        },
+        "target": {
+          "$ref": "#/$defs/groupSummary"
+        },
+        "baseline": {
+          "$ref": "#/$defs/groupSummary"
+        },
+        "deltas": {
+          "$ref": "#/$defs/deltas"
+        },
+        "outcomes": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "target",
+            "baseline"
+          ],
+          "properties": {
+            "target": {
+              "$ref": "#/$defs/outcomeSummary"
+            },
+            "baseline": {
+              "$ref": "#/$defs/outcomeSummary"
+            }
+          }
+        },
+        "verdict": {
+          "type": "string",
+          "enum": [
+            "target_preferred",
+            "baseline_preferred",
+            "target_blocked",
+            "watch",
+            "insufficient"
+          ]
+        },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "groupSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "trace_count",
+        "recommendation",
+        "mean_evidence_score",
+        "mean_residual_yield",
+        "mean_closure_strength",
+        "mean_manifest_strength",
+        "mean_risk_penalty",
+        "mean_residuals_per_10k_tokens",
+        "mean_action_blocking_per_10k_tokens",
+        "residual_count",
+        "action_blocking_count",
+        "caveats",
+        "sources"
+      ],
+      "properties": {
+        "trace_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommendation": {
+          "type": "string",
+          "enum": [
+            "adopt",
+            "review",
+            "reroute",
+            "block",
+            "no_data"
+          ]
+        },
+        "mean_evidence_score": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_residual_yield": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_closure_strength": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_manifest_strength": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_risk_penalty": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_residuals_per_10k_tokens": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_action_blocking_per_10k_tokens": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "residual_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action_blocking_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "caveats": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "deltas": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mean_evidence_score",
+        "mean_residual_yield",
+        "mean_closure_strength",
+        "mean_manifest_strength",
+        "mean_risk_penalty",
+        "mean_residuals_per_10k_tokens",
+        "mean_action_blocking_per_10k_tokens"
+      ],
+      "properties": {
+        "mean_evidence_score": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_residual_yield": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_closure_strength": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_manifest_strength": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_risk_penalty": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_residuals_per_10k_tokens": {
+          "$ref": "#/$defs/nullableNumber"
+        },
+        "mean_action_blocking_per_10k_tokens": {
+          "$ref": "#/$defs/nullableNumber"
+        }
+      }
+    },
+    "outcomeSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_count",
+        "verified_positive_count",
+        "verified_negative_count",
+        "inconclusive_count",
+        "regression_count",
+        "calibration_signal"
+      ],
+      "properties": {
+        "entry_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verified_positive_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verified_negative_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inconclusive_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "regression_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "calibration_signal": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "enum": [
+            "supports_route",
+            "weakens_route",
+            "mixed",
+            "insufficient",
+            null
+          ]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "comparison_count",
+        "target_preferred_count",
+        "baseline_preferred_count",
+        "target_blocked_count",
+        "watch_count",
+        "insufficient_count",
+        "recommendation"
+      ],
+      "properties": {
+        "comparison_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_preferred_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "baseline_preferred_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "target_blocked_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "watch_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "insufficient_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "recommendation": {
+          "type": "string",
+          "enum": [
+            "prefer_target",
+            "prefer_baseline",
+            "block_target",
+            "watch",
+            "insufficient"
+          ]
+        }
+      }
+    },
+    "nullableNumber": {
+      "type": [
+        "number",
+        "null"
+      ]
+    }
+  }
+}

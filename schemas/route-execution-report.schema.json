@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/eric-stone-plus/HIGHBALL/schemas/route-execution-report.schema.json",
+  "title": "HIGHBALL Route Execution Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "execution_report_version",
+    "route_group",
+    "inputs",
+    "packet_count",
+    "required_execution_count",
+    "complete_count",
+    "missing_count",
+    "blocked_count",
+    "degraded_count",
+    "invalid_count",
+    "not_required_count",
+    "completion_rate",
+    "execution_gate",
+    "packet_summaries",
+    "invalid_packet_refs",
+    "out_of_scope_packet_refs",
+    "decision_reasons",
+    "non_authorization"
+  ],
+  "properties": {
+    "execution_report_version": {
+      "type": "string",
+      "const": "2.0"
+    },
+    "route_group": {
+      "type": "string",
+      "minLength": 1
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action_packet_refs"],
+      "properties": {
+        "action_packet_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "packet_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "required_execution_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "complete_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "missing_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "blocked_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "degraded_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "invalid_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "not_required_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "completion_rate": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 1
+    },
+    "execution_gate": {
+      "type": "string",
+      "enum": [
+        "accepted",
+        "watch",
+        "reroute",
+        "block",
+        "insufficient"
+      ]
+    },
+    "packet_summaries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/packetSummary"
+      }
+    },
+    "invalid_packet_refs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/invalidPacketRef"
+      }
+    },
+    "out_of_scope_packet_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "decision_reasons": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "non_authorization": {
+      "type": "string",
+      "const": "Route execution reports do not authorize action, dispatch agents, or modify routing rules."
+    }
+  },
+  "$defs": {
+    "packetSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packet_ref",
+        "route_group",
+        "route",
+        "trace_instrument",
+        "action_boundary",
+        "action_decision",
+        "execution_required",
+        "execution_status",
+        "product_kind",
+        "product_id",
+        "product_sha256",
+        "action_binding_sha256",
+        "errors"
+      ],
+      "properties": {
+        "packet_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route_group": {
+          "type": "string",
+          "minLength": 1
+        },
+        "route": {
+          "type": "string",
+          "minLength": 1
+        },
+        "trace_instrument": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_boundary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "action_decision": {
+          "type": "string",
+          "minLength": 1
+        },
+        "execution_required": {
+          "type": "boolean"
+        },
+        "execution_status": {
+          "type": "string",
+          "enum": [
+            "not_required",
+            "missing",
+            "complete",
+            "blocked",
+            "degraded",
+            "invalid"
+          ]
+        },
+        "product_kind": { "type": ["string", "null"], "enum": ["QUINTE", null] },
+        "product_id": { "type": ["string", "null"], "minLength": 1 },
+        "product_sha256": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+        "action_binding_sha256": { "type": ["string", "null"], "pattern": "^sha256:[a-f0-9]{64}$" },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "invalidPacketRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "packet_ref",
+        "reason"
+      ],
+      "properties": {
+        "packet_ref": {
+          "type": "string",
+          "minLength": 1
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
