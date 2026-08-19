@@ -54,6 +54,13 @@ def atomic_consume(ledger: Path, authorization_id: str, record: dict[str, Any]) 
             handle.write("\n")
             handle.flush()
             os.fsync(handle.fileno())
+            # The claim is a newly created directory entry; syncing only the
+            # file can still lose the name to a crash and re-enable replay.
+            dir_fd = os.open(ledger, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
     except BaseException:
         claim.unlink(missing_ok=True)
         raise

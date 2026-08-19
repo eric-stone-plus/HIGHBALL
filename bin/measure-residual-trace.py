@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -45,7 +46,16 @@ def nonempty_list_string(value: Any) -> bool:
 def ratio(numerator: int, denominator: int) -> float | None:
     if denominator == 0:
         return None
-    return round(numerator / denominator, 4)
+    # Match the Rust measure (f64 scaling then round half away from zero).
+    # Python's round() is banker's rounding and diverges on exact halves
+    # (for example 1/32), which would break cross-implementation packet
+    # validation.
+    scaled = numerator / denominator * 10000.0
+    if scaled >= 0:
+        rounded = math.floor(scaled + 0.5)
+    else:
+        rounded = math.ceil(scaled - 0.5)
+    return rounded / 10000.0
 
 
 def is_high_risk(residual: dict[str, Any]) -> bool:

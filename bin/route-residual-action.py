@@ -81,7 +81,10 @@ def validate_request(request: dict[str, Any]) -> list[str]:
         errors.append("risk is invalid")
     if request.get("trace_quality_gate", "unknown") not in TRACE_GATES:
         errors.append("trace_quality_gate is invalid")
-    if "open_high_risk_count" in request and not isinstance(request.get("open_high_risk_count"), int):
+    if "open_high_risk_count" in request and (
+        isinstance(request.get("open_high_risk_count"), bool)
+        or not isinstance(request.get("open_high_risk_count"), int)
+    ):
         errors.append("open_high_risk_count must be integer when present")
     return errors
 

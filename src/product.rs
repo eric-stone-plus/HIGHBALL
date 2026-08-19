@@ -686,37 +686,80 @@ fn verify_quinte_cli(result: &Value, manifest: &Value, errors: &mut Vec<String>)
         return;
     }
     let run_id = result.get("run_id").and_then(Value::as_str).unwrap_or("");
-    let completed = Command::new(&quinte_binary)
-        .args(["inspect", run_id, "--json"])
-        .env("QUINTE_HOME", runs_root_for_cli.parent().unwrap_or(Path::new(".")))
-        .output();
-    match completed {
-        Err(e) => errors.push(format!("quinte CLI state inspection failed: {e}")),
-        Ok(out) => {
-            if !out.status.success() {
-                errors.push("quinte CLI does not report the run as a completed valid product".into());
+    let state_root = runs_root_for_cli.parent().unwrap_or(Path::new("."));
+    match run_quinte_inspect(&quinte_binary, run_id, state_root, QUINTE_CLI_INSPECT_TIMEOUT) {
+        Err(e) => errors.push(e),
+        Ok(inspected) => {
+            let data = if inspected.get("cli_envelope_version").and_then(Value::as_str)
+                == Some(QUINTE_CLI_ENVELOPE_VERSION)
+                && inspected.get("ok") == Some(&Value::Bool(true))
+            {
+                inspected.get("data")
             } else {
-                match serde_json::from_slice::<Value>(&out.stdout) {
-                    Ok(inspected) => {
-                        let data = if inspected.get("cli_envelope_version").and_then(Value::as_str)
-                            == Some(QUINTE_CLI_ENVELOPE_VERSION)
-                            && inspected.get("ok") == Some(&Value::Bool(true))
-                        {
-                            inspected.get("data")
-                        } else {
-                            None
-                        };
-                        let inspected_manifest = data.and_then(|d| d.get("manifest"));
-                        let inspected_result = data.and_then(|d| d.get("result"));
-                        if inspected_manifest != Some(manifest) || inspected_result != Some(result) {
-                            errors.push(
-                                "quinte CLI state differs from the bound manifest or result".into(),
-                            );
-                        }
-                    }
-                    Err(_) => errors.push("quinte CLI state inspection did not return JSON".into()),
-                }
+                None
+            };
+            let inspected_manifest = data.and_then(|d| d.get("manifest"));
+            let inspected_result = data.and_then(|d| d.get("result"));
+            if inspected_manifest != Some(manifest) || inspected_result != Some(result) {
+                errors.push("quinte CLI state differs from the bound manifest or result".into());
             }
+        }
+    }
+}
+
+/// The Python verifier fails closed after 15 seconds when the pinned QUINTE
+/// binary hangs (lock wait, blocked input). The Rust cross-check keeps the
+/// same bound so a wedged executable cannot block packet builds, validation,
+/// or the protected-write guard forever.
+const QUINTE_CLI_INSPECT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
+fn run_quinte_inspect(
+    quinte_binary: &Path,
+    run_id: &str,
+    state_root: &Path,
+    timeout: std::time::Duration,
+) -> Result<Value, String> {
+    use std::io::Read;
+    use std::process::Stdio;
+
+    let mut child = Command::new(quinte_binary)
+        .args(["inspect", run_id, "--json"])
+        .env("QUINTE_HOME", state_root)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| format!("quinte CLI state inspection failed: {e}"))?;
+    let mut stdout_pipe = child.stdout.take().expect("piped child stdout");
+    let reader = std::thread::spawn(move || {
+        let mut stdout = Vec::new();
+        let _ = stdout_pipe.read_to_end(&mut stdout);
+        stdout
+    });
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let stdout = reader.join().unwrap_or_default();
+                if !status.success() {
+                    return Err(
+                        "quinte CLI does not report the run as a completed valid product".into(),
+                    );
+                }
+                return serde_json::from_slice(&stdout)
+                    .map_err(|_| "quinte CLI state inspection did not return JSON".to_string());
+            }
+            Ok(None) => {
+                if std::time::Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(format!(
+                        "quinte CLI state inspection failed: timed out after {}s",
+                        timeout.as_secs()
+                    ));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(25));
+            }
+            Err(e) => return Err(format!("quinte CLI state inspection failed: {e}")),
         }
     }
 }
@@ -1285,4 +1328,36 @@ pub fn build_product_evidence(
         "product": outcome,
         "errors": errors,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn quinte_cli_inspect_times_out_fail_closed() {
+        use std::io::Write;
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = std::env::temp_dir().join(format!("highball-inspect-timeout-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("quinte-hang");
+        let mut handle = std::fs::File::create(&script).unwrap();
+        writeln!(handle, "#!/bin/sh\nsleep 5").unwrap();
+        drop(handle);
+        std::fs::set_permissions(&script, PermissionsExt::from_mode(0o755)).unwrap();
+        let started = std::time::Instant::now();
+        let outcome = run_quinte_inspect(
+            &script,
+            "run",
+            Path::new("/nonexistent"),
+            std::time::Duration::from_millis(250),
+        );
+        let _ = std::fs::remove_file(&script);
+        let _ = std::fs::remove_dir(&dir);
+        let message = outcome.err().unwrap_or_default();
+        assert!(message.contains("timed out"), "unexpected outcome: {message}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(4));
+    }
 }

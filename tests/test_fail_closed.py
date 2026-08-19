@@ -893,6 +893,184 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 1)
         self.assertIn("does not authorize", completed.stderr)
 
+    def test_protected_write_guard_detects_repo_relative_write_targets(self) -> None:
+        for index, line in enumerate((
+            "Edit src/route.rs",
+            "python3 -c open('src/main.rs','w')",
+            "update schemas/action-packet.schema.json",
+        )):
+            with self.subTest(line=line):
+                log = self.root / f"bare-session-{index}.log"
+                log.write_text(line + "\n", encoding="utf-8")
+                command = [
+                    "bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check", str(log),
+                    "--action-packet", str(self.root / "missing.json"),
+                ]
+                completed = subprocess.run(command, capture_output=True, text=True)
+                self.assertEqual(completed.returncode, 1, completed.stderr + completed.stdout)
+        clean = self.root / "clean-session.log"
+        clean.write_text("discussed docs/notes.txt and /usr/bin/env only\n", encoding="utf-8")
+        command = [
+            "bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check", str(clean),
+            "--action-packet", str(self.root / "missing.json"),
+        ]
+        completed = subprocess.run(command, capture_output=True, text=True)
+        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+        self.assertIn("no protected engineering write", completed.stdout)
+
+    def build_authorizing_human_packet(self, authorization_id: str) -> Path:
+        req = request(action_boundary="reversible", change_class="credential", risk="LOW")
+        tr = trace(req, instrument="human")
+        tr.pop("trial_manifest")
+        now = datetime.now(timezone.utc)
+        auth = self.root / f"{authorization_id}.json"
+        write(auth, {
+            "authorization_version": "1.0",
+            "authorization_id": authorization_id,
+            "authorized_by": "user",
+            "decision": "authorize",
+            "action_binding_sha256": fixture_action_binding_sha256(req),
+            "action_scope": req["action_scope"],
+            "issued_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "expires_at": (now + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        })
+        packet = self.build(req, tr, auth=auth)
+        self.assertEqual(packet["action_decision"], "pass")
+        packet["authorization"]["artifact_ref"] = auth.name
+        packet_path = self.root / f"packet-{authorization_id}.json"
+        write(packet_path, packet)
+        return packet_path
+
+    def run_guard(self, log_text: str, packet_path: Path, home: Path) -> subprocess.CompletedProcess[str]:
+        log = home / "session.log"
+        log.write_text(log_text, encoding="utf-8")
+        command = [
+            "bash", str(ROOT / "lib" / "protected-write-guard.sh"), "--check", str(log),
+            "--action-packet", str(packet_path),
+        ]
+        return subprocess.run(
+            command,
+            capture_output=True,
+            env={**os.environ, "HOME": str(home)},
+            text=True,
+        )
+
+    def test_protected_write_guard_passes_repo_relative_target_within_packet_scope(self) -> None:
+        packet_path = self.build_authorizing_human_packet("guard-scope-repo-relative")
+        home = self.root / "home-repo-relative"
+        home.mkdir()
+        completed = self.run_guard(
+            "plan HIGHBALL/bin/tool.py\nwrite bin/tool.py\n",
+            packet_path,
+            home,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr + completed.stdout)
+        replay = self.run_guard(
+            "plan HIGHBALL/bin/tool.py\nwrite bin/tool.py\n",
+            packet_path,
+            home,
+        )
+        self.assertEqual(replay.returncode, 1, replay.stderr + replay.stdout)
+
+    def test_protected_write_guard_blocks_write_outside_packet_scope(self) -> None:
+        packet_path = self.build_authorizing_human_packet("guard-scope-outside")
+        home = self.root / "home-outside"
+        home.mkdir()
+        completed = self.run_guard(
+            "plan HIGHBALL/bin/tool.py\nwrite HIGHBALL/src/lib.rs\n",
+            packet_path,
+            home,
+        )
+        self.assertEqual(completed.returncode, 1, completed.stdout)
+        self.assertIn("outside the Action Packet scope: HIGHBALL/src/lib.rs", completed.stderr)
+
+        bare = self.run_guard(
+            "plan HIGHBALL/bin/tool.py\nedit src/lib.rs\n",
+            packet_path,
+            home,
+        )
+        self.assertEqual(bare.returncode, 1, bare.stdout)
+        self.assertIn("outside the Action Packet scope: src/lib.rs", bare.stderr)
+
+    def test_python_validator_accepts_builder_block_packets_as_non_authorizing(self) -> None:
+        req = request()
+        tr = trace(req, instrument="QUINTE")
+        packet = self.build(req, tr)
+        self.assertEqual(packet["action_decision"], "block")
+        self.assertTrue(any(
+            reason.startswith("required atomic QUINTE product outcome is")
+            for reason in packet["decision_reasons"]
+        ), packet["decision_reasons"])
+        req_path, trace_path = self.root / "request.json", self.root / "trace.json"
+        write(req_path, req)
+        write(trace_path, tr)
+        py_builder = subprocess.run(
+            ["python3", str(ROOT / "bin" / "build-action-packet.py"), str(req_path), str(trace_path)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(py_builder.returncode, 1, py_builder.stderr)
+        for builder, packet_json in (
+            ("rust", packet),
+            ("python", json.loads(py_builder.stdout)),
+        ):
+            with self.subTest(builder=builder):
+                packet_path = self.root / f"packet-{builder}.json"
+                write(packet_path, packet_json)
+                completed = subprocess.run(
+                    ["python3", str(ROOT / "bin" / "validate-action-packet.py"), str(packet_path)],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(completed.returncode, 1, completed.stderr)
+                self.assertIn("non-authorizing", completed.stderr)
+
+    def test_measure_coverage_rounding_matches_across_implementations(self) -> None:
+        residuals = [
+            {
+                "id": f"r-{index}",
+                "severity": "LOW",
+                "evidence": "evidence.md" if index == 0 else None,
+                "closure_state": "closed",
+            }
+            for index in range(32)
+        ]
+        tr = {
+            "trace_version": "1.1",
+            "question": "Should this proceed?",
+            "instrument": "QUINTE",
+            "action_boundary": "none",
+            "highball_decision": "pass",
+            "residuals": residuals,
+        }
+        trace_path = self.root / "trace.json"
+        write(trace_path, tr)
+        rust = highball_json("measure-residual-trace", str(trace_path), env=self.env)
+        py = subprocess.run(
+            ["python3", str(ROOT / "bin" / "measure-residual-trace.py"), str(trace_path)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(py.returncode, 0, py.stderr)
+        self.assertEqual(json.loads(py.stdout)["traces"][0], rust["traces"][0])
+        # 1/32 is an exact rounding half: banker's rounding would yield 0.0312.
+        self.assertEqual(rust["traces"][0]["evidence_coverage"], 0.0313)
+
+    def test_router_rejects_boolean_open_high_risk_count(self) -> None:
+        req = request(open_high_risk_count=True)
+        self.assertTrue(any(
+            "open_high_risk_count must be integer" in error for error in self.route_errors(req)
+        ))
+        path = self.root / "route-request.json"
+        write(path, req)
+        completed = subprocess.run(
+            ["python3", str(ROOT / "bin" / "route-residual-action.py"), str(path)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(completed.returncode, 2, completed.stdout)
+        self.assertIn("open_high_risk_count must be integer when present", completed.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

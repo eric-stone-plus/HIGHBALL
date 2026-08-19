@@ -3,7 +3,14 @@
 
 set -euo pipefail
 
-CRITICAL_REGEX='(QUINTE|RASHOMON|HIGHBALL)/(README[^/[:space:]]*|specs/|scripts/|bin/|lib/|src/|schemas/|container/|configs/|skills/|Cargo\.(toml|lock)|pyproject\.toml|Dockerfile|compose[^/[:space:]]*\.ya?ml)|SOUL\.md|git (push|commit).* (QUINTE|RASHOMON|HIGHBALL)'
+# Session logs may record repository-relative targets without the repository
+# prefix (for example `Edit src/route.rs` after the agent cd'd into the repo),
+# so the bare-directory alternative also fires. It requires the directory to
+# start a path token so unrelated words such as `mysrc/` or `/usr/bin/` do not
+# match. Bare `git commit`/`git push` lines carry no repo identity and stay out
+# of scope; they are caught indirectly when the session log also shows a
+# protected path target.
+CRITICAL_REGEX='(QUINTE|RASHOMON|HIGHBALL)/(README[^/[:space:]]*|specs/|scripts/|bin/|lib/|src/|schemas/|container/|configs/|skills/|Cargo\.(toml|lock)|pyproject\.toml|Dockerfile|compose[^/[:space:]]*\.ya?ml)|(^|[^[:alnum:]_/.-])(src|specs|scripts|bin|lib|schemas|container|configs|skills)/|SOUL\.md|git (push|commit).* (QUINTE|RASHOMON|HIGHBALL)'
 
 usage() {
   echo "Usage: $(basename "$0") --check <session.log> --action-packet <packet.json>" >&2
@@ -24,9 +31,10 @@ packet="${4:-}"
 [ -r "$log" ] || { echo "[Protected-Write Guard] ERROR: log is not readable: $log" >&2; exit 2; }
 
 log_snapshot="$(mktemp "${TMPDIR:-/tmp}/highball-log.XXXXXX")"
+critical_snapshot=""
 packet_snapshot=""
 request_file=""
-trap 'rm -f "$log_snapshot" "$packet_snapshot" "$request_file"' EXIT
+trap 'rm -f "$log_snapshot" "$critical_snapshot" "$packet_snapshot" "$request_file"' EXIT
 cp "$log" "$log_snapshot" || {
   echo "[Protected-Write Guard] BLOCK: cannot snapshot session log" >&2
   exit 1
@@ -37,6 +45,9 @@ if ! has_arch_critical_write "$log_snapshot"; then
   echo "[Protected-Write Guard] no protected engineering write in log"
   exit 0
 fi
+
+critical_snapshot="$(mktemp "${TMPDIR:-/tmp}/highball-critical.XXXXXX")"
+grep -iE "$CRITICAL_REGEX" "$log_snapshot" > "$critical_snapshot" || true
 
 echo "[Protected-Write Guard] protected engineering write detected"
 highball_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/.."
@@ -71,19 +82,50 @@ if [ "$status" -ne 0 ]; then
   exit 1
 fi
 
-python3 - "$log_snapshot" "$packet_snapshot" <<'PY'
+python3 - "$log_snapshot" "$packet_snapshot" "$critical_snapshot" <<'PY'
 import hashlib
 import json
 import pathlib
+import re
 import sys
 
 log_path = pathlib.Path(sys.argv[1]).resolve()
 packet_path = pathlib.Path(sys.argv[2]).resolve()
+critical_path = pathlib.Path(sys.argv[3]).resolve()
 packet = json.loads(packet_path.read_text(encoding="utf-8"))
 paths = packet["route_request"]["affected_paths"]
 log = log_path.read_text(encoding="utf-8", errors="replace")
 if not paths or not all(path in log for path in paths):
     raise SystemExit("[Protected-Write Guard] BLOCK: session log is not bound to every affected path")
+
+# The check above proves the log mentions every authorized path. The reverse
+# direction also matters: every protected write target the guard detected in
+# the log must fall inside the packet's authorized scope, so a packet bound to
+# one file cannot authorize a protected write to another.
+critical = critical_path.read_text(encoding="utf-8", errors="replace")
+
+
+def covers(authorized: str, target: str) -> bool:
+    if authorized == target:
+        return True
+    # Session logs may record repository-relative targets without the prefix
+    # bound into the packet, or absolute targets that embed it.
+    if target.endswith("/" + authorized) or authorized.endswith("/" + target):
+        return True
+    if target.endswith("/"):
+        return authorized.startswith(target) or ("/" + target) in authorized
+    return False
+
+
+for token in re.findall(r"[^\s'\"(){}\[\]<>|;`=:,]+", critical):
+    target = token.strip("`'\"").rstrip(".,:;!?")
+    if not target or ("/" not in target and target != "SOUL.md"):
+        continue
+    if not any(covers(path, target) for path in paths):
+        raise SystemExit(
+            "[Protected-Write Guard] BLOCK: session log write target is "
+            "outside the Action Packet scope: " + target
+        )
 packet_digest = "sha256:" + hashlib.sha256(packet_path.read_bytes()).hexdigest()
 print(f"[Protected-Write Guard] packet binding verified: {packet_digest}")
 PY

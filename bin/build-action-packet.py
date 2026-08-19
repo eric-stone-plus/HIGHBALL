@@ -131,9 +131,13 @@ def decide(
         review("quality gate is review", "add evidence, closure evidence, scope, or human review")
 
     expected_instrument = ROUTE_INSTRUMENT.get(route)
-    if expected_instrument is not None and trace.get("instrument") != expected_instrument:
+    instrument = trace.get("instrument")
+    # Match the Rust builder: a missing or non-string instrument renders as
+    # "null", never the Python None repr.
+    instrument_label = instrument if isinstance(instrument, str) else "null"
+    if expected_instrument is not None and instrument != expected_instrument:
         block(
-            f"route {route} expects trace instrument {expected_instrument}, got {trace.get('instrument')}",
+            f"route {route} expects trace instrument {expected_instrument}, got {instrument_label}",
             "produce a trace from the selected route or reroute the action",
         )
     if request.get("question") != trace.get("question"):

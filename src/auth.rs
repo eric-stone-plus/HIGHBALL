@@ -59,6 +59,14 @@ pub fn atomic_consume(ledger: &Path, authorization_id: &str, record: &Value) -> 
         return Err(e.to_string());
     }
     let _ = handle.sync_all();
+    // The claim is a newly created directory entry. Syncing only the file can
+    // still lose the name to a crash, which would erase the consumption
+    // record and re-enable replay, so the ledger directory is synced too.
+    if let Some(parent) = claim.parent() {
+        if let Ok(dir) = fs::File::open(parent) {
+            let _ = dir.sync_all();
+        }
+    }
     Ok(claim)
 }
 
