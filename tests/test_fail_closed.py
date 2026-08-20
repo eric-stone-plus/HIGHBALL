@@ -482,7 +482,13 @@ class FailClosedTests(unittest.TestCase):
     def execution_report(self, packet_path: Path) -> dict[str, Any]:
         return highball_json("build-route-execution-report", str(packet_path), env=self.env)
 
-    def host_receipt(self, result_path: Path, *, operation: str = "inspect") -> Path:
+    def host_receipt(
+        self,
+        result_path: Path,
+        *,
+        operation: str = "inspect",
+        observed_at: datetime | None = None,
+    ) -> Path:
         run_id = json.loads(result_path.read_text())["run_id"]
         run_dir = result_path.parent
         manifest = json.loads((run_dir / "manifest.json").read_text())
@@ -494,7 +500,8 @@ class FailClosedTests(unittest.TestCase):
             "invocation_id": invocation_id,
             "receipt_path": str(receipt_path),
             "operation": operation,
-            "observed_at": "2026-08-07T00:00:00Z",
+            "observed_at": (observed_at or datetime.now(timezone.utc))
+            .strftime("%Y-%m-%dT%H:%M:%SZ"),
             "state_root": str(state_root),
             "state": {"code": "terminal", "active_run_ids": []},
             "run_id": run_id,
@@ -589,6 +596,29 @@ class FailClosedTests(unittest.TestCase):
         self.assertEqual(outcome["host_receipt_operation"], "inspect")
         self.assertEqual(outcome["host_receipt_ref"], str(receipt_path.resolve()))
         self.assertFalse(validate_packet_errors(packet, self.root))
+
+    def test_stale_host_receipt_blocks(self) -> None:
+        """The docs promise stale products block: an observation older than
+        twenty-four hours can no longer authorize an action."""
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        stale = datetime.now(timezone.utc) - timedelta(hours=25)
+        receipt_path = self.host_receipt(result_path, observed_at=stale)
+        summary, errors = self.load_receipt(receipt_path, req)
+        self.assertIn(
+            "QUINTE host receipt is stale (observed more than twenty-four hours ago)",
+            errors,
+        )
+        self.assertIsNone(summary)
+
+    def test_future_host_receipt_blocks(self) -> None:
+        req = request(risk="MEDIUM")
+        result_path = product(self.root / "quinte", req, self.binary)
+        future = datetime.now(timezone.utc) + timedelta(hours=1)
+        receipt_path = self.host_receipt(result_path, observed_at=future)
+        summary, errors = self.load_receipt(receipt_path, req)
+        self.assertIn("QUINTE host receipt observed_at is in the future", errors)
+        self.assertIsNone(summary)
 
     def test_saved_host_envelope_reads_its_durable_receipt(self) -> None:
         req = request(risk="MEDIUM")

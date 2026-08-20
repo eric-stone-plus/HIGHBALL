@@ -5,6 +5,7 @@ use crate::contracts::{
     QUINTE_CLI_ENVELOPE_VERSION, QUINTE_HOST_RECEIPT_VERSION, QUINTE_MANIFEST_VERSION,
     QUINTE_PROTOCOL_VERSION, QUINTE_RESULT_VERSION, QUINTE_TRIAL_MANIFEST_VERSION,
 };
+use chrono::{Duration, Utc};
 use crate::jsonutil::{exact_fields, load_object, nonempty, path_is_within, resolve_ref, string_list};
 use serde_json::{json, Value};
 use std::collections::BTreeSet;
@@ -866,6 +867,21 @@ pub fn load_quinte_host_receipt(
     }
     if parse_utc_timestamp(value.get("observed_at")).is_none() {
         errors.push("QUINTE host receipt observed_at must be an RFC 3339 UTC timestamp".into());
+    } else if let Some(observed) =
+        parse_utc_timestamp(value.get("observed_at")).map(|t| t.with_timezone(&Utc))
+    {
+        // The receipt is an observation of a run, not the run itself, so a
+        // fresh observation may describe an old run.  What must stay fresh
+        // is the verification act: the docs promise stale products block.
+        let current = Utc::now();
+        if observed > current + Duration::minutes(5) {
+            errors.push("QUINTE host receipt observed_at is in the future".into());
+        }
+        if current.signed_duration_since(observed) > Duration::hours(24) {
+            errors.push(
+                "QUINTE host receipt is stale (observed more than twenty-four hours ago)".into(),
+            );
+        }
     }
     let invocation_id = value.get("invocation_id").and_then(Value::as_str);
     if !nonempty(value.get("invocation_id")) {

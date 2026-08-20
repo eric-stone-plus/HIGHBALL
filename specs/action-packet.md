@@ -17,7 +17,11 @@ JSON digest of `question`, `action_boundary`, `change_class`, and ordered
 Strict (`protected_write` or `irreversible`) boundaries require at least one
 unique, non-empty affected path.
 
-Cross-task, moved, tampered, stale, or scope-drifted products block.
+Cross-task, moved, tampered, stale, or scope-drifted products block. A host
+receipt whose `observed_at` lies more than twenty-four hours in the past (or in
+the future beyond clock-skew tolerance) is stale and blocks; a fresh observation
+of an old run remains valid, because what must stay fresh is the verification
+act, not the run.
 
 ## QUINTE Binding
 

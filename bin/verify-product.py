@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -505,6 +506,16 @@ def load_quinte_host_receipt(
         errors.append("QUINTE host receipt operation must be inspect or reconcile")
     if CONTRACTS.parse_utc_timestamp(value.get("observed_at")) is None:
         errors.append("QUINTE host receipt observed_at must be an RFC 3339 UTC timestamp")
+    else:
+        observed_at = CONTRACTS.parse_utc_timestamp(value.get("observed_at"))
+        # The receipt is an observation of a run, not the run itself, so a
+        # fresh observation may describe an old run.  What must stay fresh
+        # is the verification act: the docs promise stale products block.
+        current = datetime.now(timezone.utc)
+        if observed_at > current + timedelta(minutes=5):
+            errors.append("QUINTE host receipt observed_at is in the future")
+        if current - observed_at > timedelta(hours=24):
+            errors.append("QUINTE host receipt is stale (observed more than twenty-four hours ago)")
     invocation_id = value.get("invocation_id")
     if not nonempty(invocation_id):
         errors.append("QUINTE host receipt invocation_id must be a non-empty string")
