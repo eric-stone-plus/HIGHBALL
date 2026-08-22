@@ -85,6 +85,18 @@ const TRIAL_FIELDS: &[&str] = &[
     "independence_controls",
     "contamination_risks",
     "wall_time_seconds",
+    "observed_contestation",
+];
+/// QUINTE emits observed_contestation only when R1 divergence was measured
+/// (skip_serializing_if None); older results without it stay valid, so the
+/// field is allowed but never required.
+const OBSERVED_CONTESTATION_FIELDS: &[&str] = &[
+    "r1_lane_count",
+    "contested_lane_count",
+    "contested_rate",
+    "verdict_distribution",
+    "residual_attestations",
+    "r2_skipped",
 ];
 const PERSPECTIVE_FIELDS: &[&str] = &[
     "party_id",
@@ -274,7 +286,53 @@ fn validate_trial_manifest(value: &Value, route_bindings: &Value, errors: &mut V
         errors.push(format!("{label} must be an object"));
         return;
     }
-    exact_fields(value, TRIAL_FIELDS, label, errors);
+    // observed_contestation is optional-and-additive in the QUINTE contract:
+    // reject it as unknown never, require it never; every other field exact.
+    let required_fields: Vec<&str> = TRIAL_FIELDS
+        .iter()
+        .copied()
+        .filter(|f| *f != "observed_contestation")
+        .collect();
+    let have: std::collections::BTreeSet<&str> = value
+        .as_object()
+        .map(|m| m.keys().map(String::as_str).collect())
+        .unwrap_or_default();
+    let allowed: std::collections::BTreeSet<&str> = TRIAL_FIELDS.iter().copied().collect();
+    let unknown: Vec<&str> = have.difference(&allowed).copied().collect();
+    if !unknown.is_empty() {
+        errors.push(format!("{label} has unknown fields: {}", unknown.join(", ")));
+    }
+    let required_set: std::collections::BTreeSet<&str> = required_fields.iter().copied().collect();
+    let missing: Vec<&str> = required_set.difference(&have).copied().collect();
+    if !missing.is_empty() {
+        errors.push(format!("{label} is missing fields: {}", missing.join(", ")));
+    }
+    if let Some(oc) = value.get("observed_contestation").filter(|v| !v.is_null()) {
+        if !oc.is_object() {
+            errors.push(format!("{label}.observed_contestation must be an object"));
+        } else {
+            let oc_have: std::collections::BTreeSet<&str> = oc
+                .as_object()
+                .map(|m| m.keys().map(String::as_str).collect())
+                .unwrap_or_default();
+            let oc_allowed: std::collections::BTreeSet<&str> =
+                OBSERVED_CONTESTATION_FIELDS.iter().copied().collect();
+            let oc_unknown: Vec<&str> = oc_have.difference(&oc_allowed).copied().collect();
+            let oc_missing: Vec<&str> = oc_allowed.difference(&oc_have).copied().collect();
+            if !oc_unknown.is_empty() {
+                errors.push(format!(
+                    "{label}.observed_contestation has unknown fields: {}",
+                    oc_unknown.join(", ")
+                ));
+            }
+            if !oc_missing.is_empty() {
+                errors.push(format!(
+                    "{label}.observed_contestation is missing fields: {}",
+                    oc_missing.join(", ")
+                ));
+            }
+        }
+    }
     if value.get("manifest_version").and_then(Value::as_str) != Some(QUINTE_TRIAL_MANIFEST_VERSION) {
         errors.push(format!("{label}.manifest_version is unsupported"));
     }
@@ -1349,6 +1407,60 @@ pub fn build_product_evidence(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn trial_manifest(oc: Option<Value>) -> Value {
+        let mut tm = json!({
+            "manifest_version": QUINTE_TRIAL_MANIFEST_VERSION,
+            "base_model_relation": "same_model",
+            "perspective_count": 5,
+            "perspectives": [],
+            "perturbation_axes": ["x"],
+            "independence_controls": ["y"],
+            "contamination_risks": ["z"],
+            "wall_time_seconds": 1
+        });
+        if let Some(oc) = oc {
+            tm["observed_contestation"] = oc;
+        }
+        tm
+    }
+
+    #[test]
+    fn observed_contestation_is_optional_but_contract_checked() {
+        // Absent (older QUINTE results): no field-shape error.
+        let mut errors = Vec::new();
+        validate_trial_manifest(&trial_manifest(None), &Value::Null, &mut errors);
+        assert!(!errors.iter().any(|e| e.contains("observed_contestation")));
+
+        // Present and well-formed: no field-shape error.
+        let mut errors = Vec::new();
+        let good = json!({
+            "r1_lane_count": 5,
+            "contested_lane_count": 5,
+            "contested_rate": 1.0,
+            "verdict_distribution": {"pass": 5},
+            "residual_attestations": {"r1": 2},
+            "r2_skipped": false
+        });
+        validate_trial_manifest(&trial_manifest(Some(good)), &Value::Null, &mut errors);
+        assert!(!errors.iter().any(|e| e.contains("observed_contestation")));
+
+        // Present with an unknown subfield: rejected (QUINTE denies unknowns).
+        let mut errors = Vec::new();
+        let mut bad = json!({
+            "r1_lane_count": 5,
+            "contested_lane_count": 5,
+            "contested_rate": 1.0,
+            "verdict_distribution": {},
+            "residual_attestations": {},
+            "r2_skipped": false
+        });
+        bad["bogus"] = json!(1);
+        validate_trial_manifest(&trial_manifest(Some(bad)), &Value::Null, &mut errors);
+        assert!(errors
+            .iter()
+            .any(|e| e.contains("observed_contestation has unknown fields: bogus")));
+    }
 
     #[cfg(unix)]
     #[test]
