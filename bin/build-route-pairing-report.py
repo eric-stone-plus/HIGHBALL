@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -115,8 +116,35 @@ def resolve_ref(base_file: Path, ref: str | None) -> Path | None:
         return None
     ref_path = Path(ref)
     if ref_path.is_absolute():
-        return ref_path.resolve()
-    return (base_file.parent / ref_path).resolve()
+        resolved = ref_path.resolve()
+    else:
+        resolved = (base_file.parent / ref_path).resolve()
+    return resolved if _within_workspace(resolved) else None
+
+
+# Refs inside external artifacts are untrusted input: they may point at
+# any path on the host. Bounds resolution to the workspace root derived
+# from the operator-supplied input paths; None (the existing "not local"
+# signal) is returned for refs that escape it. The root is unset when
+# this module is loaded as a library by a sibling builder (those callers
+# pass already-resolved paths), matching the historical behavior.
+_WORKSPACE_ROOT: Path | None = None
+
+
+def set_workspace_root(paths: list[Path]) -> None:
+    global _WORKSPACE_ROOT
+    resolved = [p.expanduser().resolve().parent for p in paths if p is not None]
+    _WORKSPACE_ROOT = Path(os.path.commonpath(resolved)) if resolved else None
+
+
+def _within_workspace(path: Path) -> bool:
+    if _WORKSPACE_ROOT is None:
+        return True
+    try:
+        path.relative_to(_WORKSPACE_ROOT)
+    except ValueError:
+        return False
+    return True
 
 
 def route_group_from_score(score: dict[str, Any]) -> str:
@@ -223,7 +251,7 @@ def build_pair(base_file: Path, manifest: dict[str, Any], pair: dict[str, Any]) 
     target_path = resolve_ref(base_file, pair["target_trace_ref"])
     baseline_path = resolve_ref(base_file, pair["baseline_trace_ref"])
     if target_path is None or baseline_path is None:
-        return invalid_pair(pair, "trace refs must be local files")
+        return invalid_pair(pair, "trace refs must be local files within the workspace root")
     try:
         target_trace, target_score = score_trace(target_path)
         baseline_trace, baseline_score = score_trace(baseline_path)
@@ -515,7 +543,7 @@ def validate_report(report: Any) -> list[str]:
 def expected_report(report_path: Path, report: dict[str, Any]) -> dict[str, Any]:
     pair_manifest_path = resolve_ref(report_path, report["inputs"]["pair_manifest_ref"])
     if pair_manifest_path is None:
-        raise ValueError("pair_manifest_ref must be a local file reference")
+        raise ValueError("pair_manifest_ref must be a local file reference within the workspace root")
     if not pair_manifest_path.exists():
         raise ValueError(f"pair manifest does not exist: {pair_manifest_path}")
     expected = build_report(pair_manifest_path)
@@ -529,6 +557,7 @@ def main() -> int:
     parser.add_argument("--pretty", action="store_true", help="pretty-print JSON output")
     args = parser.parse_args()
 
+    set_workspace_root([args.pair_manifest])
     try:
         report = build_report(args.pair_manifest)
     except ValueError as exc:

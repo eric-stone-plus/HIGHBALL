@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -41,8 +42,35 @@ def resolve_ref(base_file: Path, ref: str | None) -> Path | None:
         return None
     ref_path = Path(ref)
     if ref_path.is_absolute():
-        return ref_path.resolve()
-    return (base_file.parent / ref_path).resolve()
+        resolved = ref_path.resolve()
+    else:
+        resolved = (base_file.parent / ref_path).resolve()
+    return resolved if _within_workspace(resolved) else None
+
+
+# Refs inside external artifacts are untrusted input: they may point at
+# any path on the host. Bounds resolution to the workspace root derived
+# from the operator-supplied input paths; None (the existing "not local"
+# signal) is returned for refs that escape it. The root is unset when
+# this module is loaded as a library by a sibling builder (those callers
+# pass already-resolved paths), matching the historical behavior.
+_WORKSPACE_ROOT: Path | None = None
+
+
+def set_workspace_root(paths: list[Path]) -> None:
+    global _WORKSPACE_ROOT
+    resolved = [p.expanduser().resolve().parent for p in paths if p is not None]
+    _WORKSPACE_ROOT = Path(os.path.commonpath(resolved)) if resolved else None
+
+
+def _within_workspace(path: Path) -> bool:
+    if _WORKSPACE_ROOT is None:
+        return True
+    try:
+        path.relative_to(_WORKSPACE_ROOT)
+    except ValueError:
+        return False
+    return True
 
 
 def route_group_from_trace(trace: dict[str, Any]) -> str:
@@ -135,9 +163,13 @@ def build_report(packet_refs: list[str], base_file: Path | None = None, route_gr
     invalid_refs: list[dict[str, str]] = []
 
     for ref in packet_refs:
-        path = resolve_ref(base_file, ref) if base_file is not None else Path(ref).resolve()
+        if base_file is not None:
+            path = resolve_ref(base_file, ref)
+        else:
+            path = Path(ref).expanduser().resolve()
+            path = path if _within_workspace(path) else None
         if path is None:
-            invalid_refs.append({"packet_ref": ref, "reason": "action packet ref is not local"})
+            invalid_refs.append({"packet_ref": ref, "reason": "action packet ref is not local or escapes the workspace root"})
             continue
         if not path.exists():
             invalid_refs.append({"packet_ref": ref, "reason": "action packet does not exist"})
@@ -218,6 +250,8 @@ def main() -> int:
         for path in missing:
             print(f"[HIGHBALL] ERROR: action packet does not exist: {path}", file=sys.stderr)
         return 2
+
+    set_workspace_root(list(args.action_packets))
 
     try:
         report = build_report([str(path.resolve()) for path in args.action_packets], route_group=args.route_group)

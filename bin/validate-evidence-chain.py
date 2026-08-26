@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -63,8 +64,35 @@ def resolve_ref(base_file: Path, ref: str | None) -> Path | None:
         return None
     ref_path = Path(ref)
     if ref_path.is_absolute():
-        return ref_path.resolve()
-    return (base_file.parent / ref_path).resolve()
+        resolved = ref_path.resolve()
+    else:
+        resolved = (base_file.parent / ref_path).resolve()
+    return resolved if _within_workspace(resolved) else None
+
+
+# Refs inside external artifacts are untrusted input: they may point at
+# any path on the host. Bounds resolution to the workspace root derived
+# from the operator-supplied input paths; None (the existing "not local"
+# signal) is returned for refs that escape it. The root is unset when
+# this module is loaded as a library by a sibling builder (those callers
+# pass already-resolved paths), matching the historical behavior.
+_WORKSPACE_ROOT: Path | None = None
+
+
+def set_workspace_root(paths: list[Path]) -> None:
+    global _WORKSPACE_ROOT
+    resolved = [p.expanduser().resolve().parent for p in paths if p is not None]
+    _WORKSPACE_ROOT = Path(os.path.commonpath(resolved)) if resolved else None
+
+
+def _within_workspace(path: Path) -> bool:
+    if _WORKSPACE_ROOT is None:
+        return True
+    try:
+        path.relative_to(_WORKSPACE_ROOT)
+    except ValueError:
+        return False
+    return True
 
 
 def residual_ids(trace: dict[str, Any]) -> set[str]:
@@ -131,8 +159,10 @@ def validate_policy_chain(policy_path: Path) -> list[str]:
     baseline_path = resolve_ref(policy_path, policy["inputs"].get("baseline_report_ref"))
     experiment_review_path = resolve_ref(policy_path, policy["inputs"].get("experiment_review_ref"))
     execution_path = resolve_ref(policy_path, policy["inputs"].get("execution_report_ref"))
-    assert calibration_path is not None
-    assert outcome_path is not None
+    if calibration_path is None:
+        return errors + [f"calibration_report_ref escapes the workspace root or is not local: {policy['inputs']['calibration_report_ref']}"]
+    if outcome_path is None:
+        return errors + [f"outcome_ledger_ref escapes the workspace root or is not local: {policy['inputs']['outcome_ledger_ref']}"]
 
     if not calibration_path.exists():
         errors.append(f"calibration report does not exist: {calibration_path}")
@@ -337,7 +367,8 @@ def validate_baseline_chain(baseline_path: Path) -> list[str]:
 
     calibration_path = resolve_ref(baseline_path, report["inputs"]["calibration_report_ref"])
     outcome_path = resolve_ref(baseline_path, report["inputs"].get("outcome_ledger_ref"))
-    assert calibration_path is not None
+    if calibration_path is None:
+        return errors + [f"calibration_report_ref escapes the workspace root or is not local: {report['inputs']['calibration_report_ref']}"]
 
     if not calibration_path.exists():
         errors.append(f"calibration report does not exist: {calibration_path}")
@@ -554,6 +585,7 @@ def main() -> int:
     parser.add_argument("root_report", type=Path)
     args = parser.parse_args()
 
+    set_workspace_root([args.root_report])
     try:
         errors = validate_chain(args.root_report.resolve())
     except ValueError as exc:

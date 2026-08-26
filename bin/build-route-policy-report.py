@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -64,8 +65,35 @@ def resolve_ref(base_file: Path, ref: str | None) -> Path | None:
         return None
     ref_path = Path(ref)
     if ref_path.is_absolute():
-        return ref_path.resolve()
-    return (base_file.parent / ref_path).resolve()
+        resolved = ref_path.resolve()
+    else:
+        resolved = (base_file.parent / ref_path).resolve()
+    return resolved if _within_workspace(resolved) else None
+
+
+# Refs inside external artifacts are untrusted input: they may point at
+# any path on the host. Bounds resolution to the workspace root derived
+# from the operator-supplied input paths; None (the existing "not local"
+# signal) is returned for refs that escape it. The root is unset when
+# this module is loaded as a library by a sibling builder (those callers
+# pass already-resolved paths), matching the historical behavior.
+_WORKSPACE_ROOT: Path | None = None
+
+
+def set_workspace_root(paths: list[Path]) -> None:
+    global _WORKSPACE_ROOT
+    resolved = [p.expanduser().resolve().parent for p in paths if p is not None]
+    _WORKSPACE_ROOT = Path(os.path.commonpath(resolved)) if resolved else None
+
+
+def _within_workspace(path: Path) -> bool:
+    if _WORKSPACE_ROOT is None:
+        return True
+    try:
+        path.relative_to(_WORKSPACE_ROOT)
+    except ValueError:
+        return False
+    return True
 
 
 def validate_inputs(
@@ -245,6 +273,13 @@ def validate_review_refs(
     calibration_ref = resolve_ref(review_path, inputs.get("calibration_report_ref"))
     outcome_ref = resolve_ref(review_path, inputs.get("outcome_ledger_ref"))
     baseline_ref = resolve_ref(review_path, inputs.get("baseline_report_ref"))
+    for label, ref, resolved in (
+        ("calibration_report_ref", inputs.get("calibration_report_ref"), calibration_ref),
+        ("outcome_ledger_ref", inputs.get("outcome_ledger_ref"), outcome_ref),
+        ("baseline_report_ref", inputs.get("baseline_report_ref"), baseline_ref),
+    ):
+        if ref is not None and resolved is None:
+            errors.append(f"experiment review {label} escapes the workspace root or is not local: {ref}")
     if calibration_ref != calibration_path.resolve():
         errors.append("experiment review calibration ref differs from policy calibration report")
     if outcome_ref is not None and outcome_ref != outcome_path.resolve():
@@ -406,6 +441,15 @@ def main() -> int:
     parser.add_argument("--pretty", action="store_true", help="pretty-print JSON output")
     args = parser.parse_args()
 
+    set_workspace_root(
+        [
+            args.calibration_report,
+            args.outcome_ledger,
+            args.baseline_report,
+            args.experiment_review,
+            args.execution_report,
+        ]
+    )
     try:
         report = build_report(
             args.calibration_report,
