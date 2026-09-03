@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 #[derive(Parser)]
-#[command(name = "highball", about = "HIGHBALL control plane")]
+#[command(name = "highball", about = "HIGHBALL control plane", version)]
 struct Cli {
     #[command(subcommand)]
     cmd: Commands,
