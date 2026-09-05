@@ -49,10 +49,12 @@ verify_assets() {
         printf '%s\n' "$checksum_output" >&2
         exit "$checksum_status"
       }
-      [[ "$(wc -l < SHA256SUMS | tr -d '[:space:]')" == 4 ]]
+      # The || die guard below suppresses errexit inside this subshell, so
+      # every binding check must exit explicitly or it is silently ignored.
+      [[ "$(wc -l < SHA256SUMS | tr -d '[:space:]')" == 4 ]] || exit 1
       for file in "${expected[@]}"; do
         [[ "$file" == SHA256SUMS ]] && continue
-        [[ "$(awk -v name="$file" '$2 == name {count++} END {print count+0}' SHA256SUMS)" == 1 ]]
+        [[ "$(awk -v name="$file" '$2 == name {count++} END {print count+0}' SHA256SUMS)" == 1 ]] || exit 1
       done
     ) || die "SHA256SUMS does not bind each archive exactly once"
   fi
@@ -245,8 +247,14 @@ jq -e '
   end
 ' "$api_tmp/runs.json" >/dev/null \
   || die "Actions history returned malformed data"
+# A historical run whose display_title fails the run-name format only blocks
+# this release when it plausibly names the requested version or candidate;
+# other unrecognized titles are warned about and skipped below, so one bad
+# dispatch title cannot brick every future release.
 if jq -e \
-  --arg candidate "$candidate" --argjson current "$current_run_id" '
+  --arg candidate "$candidate" --argjson current "$current_run_id" --arg version "$version" '
+    def run_title: "^Release v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*) from [0-9a-f]{40}$";
+    def version_token: ([scan("(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)")][0]) // "";
     (if type == "array" then [.[].workflow_runs[]] else .workflow_runs end)[] |
     select(
       (.id | type != "number") or
@@ -254,11 +262,19 @@ if jq -e \
       (.display_title | type != "string") or
       (.event | type != "string") or
       (.event != "workflow_dispatch") or
-      (.display_title | test("^Release v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*) from [0-9a-f]{40}$") | not) or
-      (.id != $current and .head_sha == $candidate)
+      (.id != $current and .head_sha == $candidate) or
+      (.id != $current and (.display_title | test(run_title) | not) and
+        ((.display_title | contains($candidate)) or
+         ((.display_title | version_token) == $version)))
     )
   ' "$api_tmp/runs.json" >/dev/null; then
   die "candidate $candidate was already attempted, or Actions history is malformed"
+else
+  select_rc=$?
+  # jq -e exits 1 (last output false/null) or 4 (empty output) on no match;
+  # only those two statuses mean the history is clean.
+  [[ "$select_rc" -eq 1 || "$select_rc" -eq 4 ]] \
+    || die "Actions candidate-reuse check failed (jq status $select_rc)"
 fi
 
 while IFS= read -r attempted; do
@@ -268,10 +284,15 @@ while IFS= read -r attempted; do
   [[ "$attempted_key" < "$requested_key" ]] \
     || die "$version is not strictly newer than attempted version $attempted"
 done < <(jq -r --argjson current "$current_run_id" '
+  def run_title: "^Release v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*) from [0-9a-f]{40}$";
   (if type == "array" then [.[].workflow_runs[]] else .workflow_runs end)[] |
   select(.id != $current) |
   .display_title |
-  capture("^Release v(?<version>[0-9]+\\.[0-9]+\\.[0-9]+) from [0-9a-f]{40}$").version
+  if test(run_title) then
+    capture("^Release v(?<version>[0-9]+\\.[0-9]+\\.[0-9]+) from [0-9a-f]{40}$").version
+  else
+    ("release guard: warning: ignoring unrecognized display_title: \(.)" | stderr | empty)
+  end
 ' "$api_tmp/runs.json")
 
 printf 'release guard: %s is bound to %s and eligible\n' "$tag" "$candidate"

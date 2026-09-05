@@ -27,7 +27,8 @@ PY
 else
   echo "[HIGHBALL] WARN: jsonschema unavailable; skipped schema meta-validation" >&2
 fi
-bash -n lib/protected-write-guard.sh scripts/check-local.sh
+bash -n lib/protected-write-guard.sh scripts/release-guard.sh scripts/test-release-guard.sh scripts/check-local.sh
+scripts/test-release-guard.sh
 retired_pattern="$(printf '%s' 'sh' 'imei|ken' 'gen|ban' 'nin|ハイボール|指名|権限|番人')"
 if rg -n -i "$retired_pattern" \
     --glob '!**/.git/**' --glob '!**/__pycache__/**' \
